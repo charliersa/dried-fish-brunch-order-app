@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1c5e7a" />
+  <link rel="manifest" href="manifest.json" />
+  <title>小魚乾早午餐 · 線上點餐</title>
+  <style>
+    /* 共用樣式由 shared.js 於頁尾注入 */
+    .cat-bar {
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 16px;
+      margin: 0 -16px 14px;
+      background: var(--bg-top);
+      border-bottom: 1px solid var(--line);
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .cat-bar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .cat-chip {
+      flex: 0 0 auto;
+      border: 1.5px solid var(--line);
+      background: #fff;
+      color: var(--ink-soft);
+      font-weight: 700;
+      font-size: 13px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .cat-chip.active {
+      background: var(--pink);
+      border-color: var(--pink);
+      color: #fff;
+    }
+
+    .section {
+      scroll-margin-top: 60px;
+    }
+
+    .menu-card {
+      cursor: pointer;
+    }
+
+    .opt-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .opt-chip {
+      border: 1.5px solid var(--line);
+      background: #fff;
+      color: var(--ink-soft);
+      font-weight: 700;
+      font-size: 13px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .opt-chip.active {
+      background: var(--pink);
+      border-color: var(--pink);
+      color: #fff;
+    }
+
+    .menu-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .menu-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      flex-wrap: wrap;
+    }
+
+    .menu-price {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--pink);
+    }
+
+    .add-circle {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: none;
+      background: var(--pink);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(216, 75, 132, .3);
+    }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .circle-button {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 1.5px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .circle-button.filled {
+      border: none;
+      background: var(--pink);
+      color: #fff;
+    }
+
+    .cart-bar {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      max-width: 608px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: none;
+      background: var(--pink);
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 18px;
+      box-shadow: 0 8px 20px rgba(216, 75, 132, .4);
+      z-index: 30;
+      cursor: pointer;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(20, 50, 65, .45);
+      z-index: 40;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .sheet {
+      width: 100%;
+      max-width: 640px;
+      background: #f4fafd;
+      border-radius: 22px 22px 0 0;
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 18px 18px 22px;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .line-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 10px 12px;
+    }
+
+    .small-button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #c9899f;
+      font-size: 16px;
+    }
+
+    .toggle-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .toggle-row button {
+      flex: 1;
+      gap: 6px;
+      border: 2px solid var(--line);
+      background: #fff;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-weight: 700;
+      padding: 10px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toggle-row button.active {
+      border-color: var(--pink);
+      color: var(--pink-deep);
+    }
+
+    .input-group {
+      width: 100%;
+      border: 1.5px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-size: 15px;
+      color: var(--ink);
+      outline: none;
+      background: #fff;
+    }
+
+    .button-submit {
+      width: 100%;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      background: var(--pink);
+      color: #fff;
+      font-weight: 900;
+      font-size: 17px;
+      padding: 14px;
+      border-radius: 16px;
+      box-shadow: 0 6px 16px rgba(216, 75, 132, .35);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="top-row">
+        <div class="brand">
+          <div class="brand-logo">🐟</div>
+          <div class="brand-text">
+            <h1>小魚乾早午餐</h1>
+            <p>DRIED FISH BRUNCH</p>
+          </div>
+        </div>
+        <div class="info-chip">⏰ 6:00–12:00</div>
+      </div>
+      <div class="address">📍 台南市東區長東街 106 號 · 現點現做，請耐心等候</div>
+    </header>
+    <main id="app"></main>
+  </div>
+
+  <div id="cart-bar" class="cart-bar" style="display:none;">
+    <span id="cart-info"></span>
+    <span style="font-weight:900;">前往結帳 →</span>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="shared.js"></script>
+  <script>document.head.insertAdjacentHTML('beforeend', '<style>' + getSharedStyles() + '</style>');</script>
+  <script>
+    applyDeviceCodeFromUrl();
+    const app = document.getElementById('app');
+    const cartBar = document.getElementById('cart-bar');
+    const cartInfo = document.getElementById('cart-info');
+    let orders = loadOrders();
+
+    const state = {
+      cart: [],            // [{ lineId, id, temp, note, qty }]
+      diningType: '內用',
+      tableInfo: '',
+      phone: '',
+      memberPhone: '',
+      note: '',
+      cartOpen: false,
+      activeItem: null,    // 商品詳情彈窗中的品項 id
+      itemTemp: '冷',
+      itemQty: 1,
+      itemNote: '',
+      itemOptions: [],
+      currentOrderId: null,
+      submitting: false,
+      showBoard: false,
+      justPickedId: '',
+    };
+
+    // 叫號板：準備取餐(藍)→已可取餐(紅)；顧客可按自己的紅色號碼確認取餐(變藍→消失)
+    function renderCallBoard(highlightNo) {
+      const today = orders.filter(o => isToday(o.createdAt));
+      const preparing = today.filter(o => o.status !== 'done').sort((a, b) => a.createdAt - b.createdAt);          // 藍：製作中/排隊
+      const ready = today.filter(o => o.status === 'done' && !o.picked).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)); // 紅：可取餐（顧客按取餐後消失）
+      const justPicked = state.justPickedId ? today.find(o => o.id === state.justPickedId) : null; // 剛按取餐→短暫顯示藍色
+
+      const prepChip = (o) => {
+        const own = o.no === highlightNo;
+        const style = own ? 'background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(62,155,209,.45);' : 'background:var(--blue-bg);color:var(--blue);border:2px solid var(--blue);';
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:60px;padding:10px 14px;border-radius:14px;font-size:22px;font-weight:900;${style}">${escapeHtml(o.no)}</span>`;
+      };
+      const readyChip = (o) => {
+        const own = o.no === highlightNo; // 自己的號碼特別強調
+        const label = own ? '👆 按我確認取餐' : '👆 取餐';
+        const style = own
+          ? 'background:#e5534b;color:#fff;border:none;box-shadow:0 4px 12px rgba(229,83,75,.45);'
+          : 'background:#fff;color:#e5534b;border:2px solid #e5534b;';
+        return `<button data-action="self-pickup" data-id="${o.id}" style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border-radius:14px;padding:9px 16px;font-weight:900;cursor:pointer;${style}"><span style="font-size:22px;">${escapeHtml(o.no)}</span><span style="font-size:11px;font-weight:700;">${label}</span></button>`;
+      };
+      const pickedChip = (o) => `<span style="display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-radius:14px;font-size:18px;font-weight:900;background:var(--blue);color:#fff;">${escapeHtml(o.no)} ✅已取餐</span>`;
+
+      const readyList = (justPicked ? pickedChip(justPicked) : '') + ready.map(readyChip).join('');
+      return `
+        <div style="background:#fff;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 2px 6px rgba(28,94,122,.07);">
+          <div style="font-weight:900;font-size:16px;">🔔 叫號板</div>
+          <div style="margin-top:10px;">
+            <div style="font-weight:900;font-size:14px;margin-bottom:8px;">🔴 已可取餐（請取餐）</div>
+            ${(ready.length || justPicked) ? `<div style="display:flex;flex-wrap:wrap;gap:10px;">${readyList}</div>` : `<div style="color:var(--ink-soft);font-size:13px;padding:2px 0;">目前沒有可取餐的號碼</div>`}
+          </div>
+          <div style="margin-top:10px;">
+            <div style="font-weight:900;font-size:14px;margin-bottom:8px;">🔵 準備取餐（製作中）</div>
+            ${preparing.length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;">${preparing.map(prepChip).join('')}</div>` : `<div style="color:var(--ink-soft);font-size:13px;padding:2px 0;">目前沒有等待中的訂單</div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function cartCount() {
+      return state.cart.reduce((total, line) => total + line.qty, 0);
+    }
+
+    function cartTotal() {
+      return state.cart.reduce((sum, line) => {
+        const item = getItem(line.id);
+        return sum + (item ? item.price * line.qty : 0);
+      }, 0);
+    }
+
+    function inCartQty(id) {
+      return state.cart.filter(line => line.id === id).reduce((sum, line) => sum + line.qty, 0);
+    }
+
+    function getCategoryOf(itemId) {
+      return CURRENT_MENU.find(cat => cat.items.some(it => it.id === itemId));
+    }
+
+    function visibleCategories() {
+      return CURRENT_MENU.filter(cat => cat.items.some(it => it.active !== false));
+    }
+
+    function addToCart(id, temp, note, qty) {
+      const existing = state.cart.find(line => line.id === id && line.temp === (temp || '') && (line.note || '') === (note || ''));
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        state.cart.push({ lineId: Date.now() + '_' + Math.floor(Math.random() * 1000), id, temp: temp || '', note: note || '', qty });
+      }
+    }
+
+    function renderCustomer() {
+      if (state.currentOrderId) {
+        const order = orders.find(o => o.id === state.currentOrderId);
+        if (order) {
+          renderConfirmation(order);
+          return;
+        }
+      }
+
+      const cats = visibleCategories();
+      const catBar = `
+        <div class="cat-bar">
+          ${cats.map(cat => `<button class="cat-chip" data-action="jump-cat" data-cat="${cat.id}">${cat.icon} ${cat.name}</button>`).join('')}
+        </div>
+      `;
+
+      const menuSections = cats.map(category => {
+        const items = category.items.filter(it => it.active !== false).map(item => renderMenuItem(category, item)).join('');
+        return `<section class="section" id="sec-${category.id}"><div class="section-title"><span style="font-size:22px">${category.icon}</span><h2>${category.name}</h2><div class="section-divider"></div></div><div class="grid">${items}</div></section>`;
+      }).join('');
+
+      // 記住目前焦點欄位與游標、捲動位置，避免背景重畫時打斷打字或畫面跳動
+      const activeEl = document.activeElement;
+      const focusId = activeEl && activeEl.id ? activeEl.id : null;
+      const caret = activeEl && typeof activeEl.selectionStart === 'number' ? activeEl.selectionStart : null;
+      const scrollY = window.scrollY;
+
+      app.innerHTML = `
+        <button class="button-primary" data-action="toggle-board" style="width:100%;justify-content:center;margin-bottom:12px;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:800;">📺 ${state.showBoard ? '收起叫號板' : '查看叫號板（看可取餐號碼）'}</button>
+        ${state.showBoard ? renderCallBoard(null) : ''}
+        <div class="toggle-row">
+          <button class="${state.diningType === '內用' ? 'active' : ''}" data-action="set-dining" data-type="內用">🍽️ 內用</button>
+          <button class="${state.diningType === '外帶' ? 'active' : ''}" data-action="set-dining" data-type="外帶">🛍️ 外帶</button>
+        </div>
+        ${catBar}
+        ${menuSections}
+        ${state.activeItem ? renderItemSheet() : (state.cartOpen ? renderCartSheet() : '')}
+      `;
+
+      attachEvents();
+      updateCartBar();
+      updateActiveCat();
+
+      // 還原焦點與游標
+      if (focusId) {
+        const el = document.getElementById(focusId);
+        if (el) {
+          el.focus();
+          if (caret != null && typeof el.setSelectionRange === 'function') {
+            try { el.setSelectionRange(caret, caret); } catch (e) {}
+          }
+        }
+      }
+      if (scrollY) window.scrollTo(0, scrollY); // 還原捲動位置
+    }
+
+    function renderMenuItem(category, item) {
+      if (item.soldOut) {
+        return `
+        <div class="card" style="opacity:.55;">
+          <div class="menu-info">
+            <div class="menu-title"><span>${item.name}</span><span class="menu-price">$${item.price}</span></div>
+          </div>
+          <button class="pill-button" disabled style="opacity:.8;cursor:default;">售完</button>
+        </div>`;
+      }
+      const inCart = inCartQty(item.id);
+      return `
+        <div class="card menu-card" data-action="open-item" data-id="${item.id}">
+          <div class="menu-info">
+            <div class="menu-title"><span>${item.name}</span><span class="menu-price">$${item.price}</span></div>
+            ${category.temp ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:3px;">可選 冷／熱</div>` : ''}
+            ${inCart ? `<div style="font-size:11px;color:var(--pink-deep);margin-top:3px;font-weight:700;">🛒 已加入 ${inCart} 份</div>` : ''}
+          </div>
+          <button class="add-circle" data-action="open-item" data-id="${item.id}">＋</button>
+        </div>
+      `;
+    }
+
+    function renderItemSheet() {
+      const item = getItem(state.activeItem);
+      if (!item) return '';
+      const category = getCategoryOf(item.id);
+      const hasTemp = !!(category && category.temp);
+      const temp = hasTemp ? (state.itemTemp || '冷') : '';
+      const qty = state.itemQty || 1;
+      const subtotal = item.price * qty;
+
+      return `
+        <div class="overlay" data-action="close-item">
+          <div class="sheet" data-ignore>
+            <div class="sheet-header">
+              <h3>${item.name}</h3>
+              <button data-action="close-item" style="border:none;background:none;cursor:pointer;color:var(--ink-soft);font-size:20px;">✕</button>
+            </div>
+            <div style="color:var(--pink);font-weight:900;font-size:18px;margin-bottom:16px;">$${item.price}</div>
+            ${hasTemp ? `
+              <div style="font-weight:700;margin-bottom:6px;">溫度</div>
+              <div class="toggle-row">
+                <button class="${temp === '冷' ? 'active' : ''}" data-action="item-temp" data-temp="冷">🧊 冷</button>
+                <button class="${temp === '熱' ? 'active' : ''}" data-action="item-temp" data-temp="熱">🔥 熱</button>
+              </div>
+            ` : ''}
+            <div style="font-weight:700;margin:6px 0;">餐點備註</div>
+            ${(() => {
+              const opts = (item.opts && item.opts.length) ? item.opts : noteOptionsFor(category ? category.id : '');
+              return opts.length ? `<div class="opt-grid">${opts.map(o => `<button class="opt-chip ${state.itemOptions.includes(o) ? 'active' : ''}" data-action="item-opt" data-opt="${escapeHtml(o)}">${state.itemOptions.includes(o) ? '✕ ' : ''}${escapeHtml(o)}</button>`).join('')}</div>` : '';
+            })()}
+            <input id="item-note-input" class="input-group" placeholder="其他備註（例：醬多一點、餐點切塊）" value="${escapeHtml(state.itemNote || '')}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;">
+              <span style="font-weight:700;">數量</span>
+              <div class="stepper">
+                <button class="circle-button" data-action="item-qty-dec">－</button>
+                <div style="font-weight:900;min-width:24px;text-align:center;font-size:18px;">${qty}</div>
+                <button class="circle-button filled" data-action="item-qty-inc">＋</button>
+              </div>
+            </div>
+            <button class="button-submit" data-action="confirm-add-item">＋ 加入購物車 · $${subtotal}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCartSheet() {
+      const lines = state.cart;
+      const content = lines.length === 0 ? '<div style="color:var(--ink-soft);text-align:center;padding:18px 0;">購物車目前是空的</div>' : lines.map(line => {
+        const item = getItem(line.id);
+        if (!item) return '';
+        return `
+          <div class="line-item">
+            <div style="min-width:0;">
+              <span style="font-weight:700">${item.name}</span>
+              ${line.temp ? `<span style="margin-left:6px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${line.temp === '冷' ? 'var(--blue-bg)' : 'rgba(232,154,43,.15)'};color:${line.temp === '冷' ? 'var(--blue)' : 'var(--amber)'}">${line.temp}</span>` : ''}
+              ${line.note ? `<div style="font-size:12px;color:var(--amber);margin-top:2px;">📝 ${escapeHtml(line.note)}</div>` : ''}
+              <div style="font-size:12px;color:var(--ink-soft);">$${item.price}</div>
+            </div>
+            <div class="stepper">
+              <button class="circle-button" data-action="dec-line" data-line="${line.lineId}">－</button>
+              <div style="font-weight:900;min-width:16px;text-align:center">${line.qty}</div>
+              <button class="circle-button filled" data-action="inc-line" data-line="${line.lineId}">＋</button>
+              <button class="small-button" data-action="rm-line" data-line="${line.lineId}">🗑</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="overlay" data-action="close-sheet">
+          <div class="sheet" data-ignore>
+            <div class="sheet-header">
+              <h3>確認餐點</h3>
+              <button data-action="close-sheet" style="border:none;background:none;cursor:pointer;color:var(--ink-soft);font-size:20px;">✕</button>
+            </div>
+            <div style="display:grid;gap:8px;margin-bottom:14px;">${content}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);margin-bottom:8px;">
+              用餐方式：<span style="font-weight:800;color:var(--pink-deep);">${state.diningType}</span>（可於上方切換）
+            </div>
+            <input id="phone-input" type="tel" inputmode="numeric" maxlength="10" class="input-group" placeholder="手機（必填，例：0912345678）" value="${escapeHtml(state.phone)}">
+            <input id="table-input" class="input-group" placeholder="${state.diningType === '內用' ? '桌號（例：3號桌）' : '取餐名稱（必填，例：小美）'}" value="${escapeHtml(state.tableInfo)}" style="margin-top:8px;">
+            <input id="note-input" class="input-group" placeholder="整單備註（例：餐具、不附吸管）" value="${escapeHtml(state.note)}" style="margin-top:8px;">
+            <button class="button-submit" data-action="submit-order">🔔 送出訂單 · $${cartTotal()}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderConfirmation(order) {
+      const stepOrder = ['new', 'cook', 'done'];
+      const stepMap = {
+        new: { label: '新訂單', color: 'var(--amber)', icon: '🔔' },
+        cook: { label: '製作中', color: 'var(--blue)', icon: '👨‍🍳' },
+        done: { label: '完成', color: 'var(--green)', icon: '✔️' },
+      };
+      const stepIndex = stepOrder.indexOf(order.status);
+      const stepHtml = stepOrder.map((status, index) => {
+        const active = index <= stepIndex;
+        return `
+          <div style="text-align:center;">
+            <div class="step-dot" style="background:${active ? stepMap[status].color : '#e6eef2'};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;">${stepMap[status].icon}</div>
+            <div style="margin-top:4px;font-size:11px;font-weight:700;color:${active ? stepMap[status].color : '#9db4bf'}">${stepMap[status].label}</div>
+          </div>
+          ${index < stepOrder.length - 1 ? `<div style="flex:1;height:3px;border-radius:2px;background:${index < stepIndex ? stepMap[stepOrder[index + 1]].color : '#e6eef2'};"></div>` : ''}
+        `;
+      }).join('');
+
+      const itemsHtml = order.items.map(item => {
+        const mi = getItem(item.id);
+        const nm = item.name || (mi && mi.name) || '未知品項';
+        const price = (item.price != null ? item.price : (mi ? mi.price : 0));
+        return `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;font-size:14px;padding:3px 0;">
+          <span>${nm}${item.temp ? `（${item.temp}）` : ''} ×${item.qty}${item.note ? `<span style="color:var(--amber);"> · 📝${escapeHtml(item.note)}</span>` : ''}</span>
+          <span style="color:var(--ink-soft);white-space:nowrap;">$${price * item.qty}</span>
+        </div>
+      `; }).join('');
+
+      app.innerHTML = `
+        <div>
+          <div style="background:#fff;border-radius:22px;padding:24px;box-shadow:0 4px 14px rgba(28,94,122,.1);text-align:center;">
+            <div style="font-size:40px;">🐟</div>
+            <h2 style="margin:6px 0 2px;font-weight:900;">訂單已送出！</h2>
+            <div style="color:var(--ink-soft);font-size:14px;">取餐號碼</div>
+            <div style="font-size:40px;font-weight:900;color:var(--pink);letter-spacing:2px;">${order.no}</div>
+            <div style="display:flex;align-items:center;gap:4px;margin:18px 4px 8px;flex-wrap:wrap;justify-content:center;">${stepHtml}</div>
+            <div style="font-size:13px;color:var(--ink-soft);margin-top:6px;">${order.picked ? '✅ 已完成取餐，謝謝惠顧！' : (order.status === 'done' ? '餐點已完成，可於下方按號碼確認取餐 🎉' : '畫面會自動更新，請留意叫號')}</div>
+          </div>
+          <div style="background:#fff;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 2px 6px rgba(28,94,122,.07);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-weight:700;">${order.type} · ${escapeHtml(order.table)}${order.phone ? ` · 📞 ${escapeHtml(order.phone)}` : ''}</span>
+              <span style="color:var(--ink-soft);font-size:13px;">${new Date(order.createdAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+            </div>
+            ${itemsHtml}
+            ${order.note ? `<div style="font-size:13px;color:var(--amber);margin-top:6px;background:rgba(232,154,43,.1);border-radius:8px;padding:5px 8px;">備註：${escapeHtml(order.note)}</div>` : ''}
+            <div style="display:flex;align-items:center;justify-content:space-between;font-weight:900;border-top:1px solid var(--line);margin-top:8px;padding-top:8px;"><span>合計</span><span style="color:var(--pink);">$${order.total}</span></div>
+          </div>
+          <div style="margin-top:14px;">${renderCallBoard(order.no)}</div>
+          ${(order.status === 'done' || order.picked)
+            ? `<button class="button-primary" data-action="new-order" style="width:100%;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:700;">${order.picked ? '✅ 已取餐，再點一單' : '再點一單'}</button>`
+            : `<div style="text-align:center;color:var(--ink-soft);font-size:13px;margin-top:6px;">餐點製作中，完成後即可再點下一單 🍳</div>`}
+        </div>
+      `;
+
+      attachEvents();
+      updateCartBar();
+    }
+
+    function updateCartBar() {
+      const count = cartCount();
+      if (count > 0 && !state.currentOrderId) {
+        cartBar.style.display = 'flex';
+        cartInfo.textContent = `🛒 ${count} 項 · $${cartTotal()}`;
+      } else {
+        cartBar.style.display = 'none';
+      }
+    }
+
+    function updateActiveCat() {
+      const chips = Array.from(document.querySelectorAll('.cat-chip'));
+      if (!chips.length) return;
+      let activeId = null;
+      visibleCategories().forEach(cat => {
+        const sec = document.getElementById('sec-' + cat.id);
+        if (sec && sec.getBoundingClientRect().top <= 80) activeId = cat.id;
+      });
+      if (!activeId) {
+        const first = visibleCategories()[0];
+        if (first) activeId = first.id;
+      }
+      chips.forEach(chip => chip.classList.toggle('active', chip.dataset.cat === activeId));
+      const active = chips.find(chip => chip.classList.contains('active'));
+      if (active) {
+        const bar = active.parentElement;
+        bar.scrollLeft = active.offsetLeft - bar.clientWidth / 2 + active.clientWidth / 2;
+      }
+    }
+
+    function attachEvents() {
+      app.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', handleAction));
+      app.querySelectorAll('[data-ignore]').forEach(el => el.addEventListener('click', e => e.stopPropagation()));
+      const tableInput = document.getElementById('table-input');
+      const noteInput = document.getElementById('note-input');
+      const itemNoteInput = document.getElementById('item-note-input');
+      const memberInput = document.getElementById('phone-member');
+      const phoneInput = document.getElementById('phone-input');
+      if (tableInput) tableInput.addEventListener('input', e => state.tableInfo = e.target.value);
+      if (noteInput) noteInput.addEventListener('input', e => state.note = e.target.value);
+      if (itemNoteInput) itemNoteInput.addEventListener('input', e => state.itemNote = e.target.value);
+      // 手機欄位：只允許數字、最長 10 碼，且不會被重整洗掉（值存在 state）
+      const onPhoneInput = key => e => {
+        const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+        state[key] = v;
+        if (e.target.value !== v) e.target.value = v;
+      };
+      if (memberInput) memberInput.addEventListener('input', onPhoneInput('memberPhone'));
+      if (phoneInput) phoneInput.addEventListener('input', onPhoneInput('phone'));
+    }
+
+    function handleAction(event) {
+      const btn = event.currentTarget;
+      const action = btn.dataset.action;
+      if (!action) return;
+      event.stopPropagation();
+
+      if (action === 'toggle-board') {
+        state.showBoard = !state.showBoard;
+        renderCustomer();
+        return;
+      }
+
+      if (action === 'self-pickup') {
+        const id = btn.dataset.id;
+        const order = orders.find(o => o.id === id);
+        if (order && !order.picked) {
+          order.picked = true; // 樂觀更新：顧客自行確認取餐
+          state.justPickedId = id; // 短暫顯示藍色「已取餐」
+          syncUpdateOrder(id, { picked: true, updatedAt: Date.now() });
+          showMessage('✅ 已確認取餐，謝謝惠顧！');
+          renderCustomer();
+          setTimeout(() => { state.justPickedId = ''; renderCustomer(); }, 1500);
+        }
+        return;
+      }
+
+      if (action === 'open-item') {
+        const id = btn.dataset.id;
+        const category = getCategoryOf(id);
+        state.activeItem = id;
+        state.itemTemp = (category && category.temp) ? '冷' : '';
+        state.itemQty = 1;
+        state.itemNote = '';
+        state.itemOptions = [];
+        state.cartOpen = false;
+        renderCustomer();
+      } else if (action === 'item-opt') {
+        const o = btn.dataset.opt;
+        if (state.itemOptions.includes(o)) state.itemOptions = state.itemOptions.filter(x => x !== o);
+        else state.itemOptions = state.itemOptions.concat([o]);
+        renderCustomer();
+      } else if (action === 'close-item') {
+        state.activeItem = null;
+        renderCustomer();
+      } else if (action === 'item-temp') {
+        state.itemTemp = btn.dataset.temp;
+        renderCustomer();
+      } else if (action === 'item-qty-inc') {
+        state.itemQty = (state.itemQty || 1) + 1;
+        renderCustomer();
+      } else if (action === 'item-qty-dec') {
+        state.itemQty = Math.max(1, (state.itemQty || 1) - 1);
+        renderCustomer();
+      } else if (action === 'confirm-add-item') {
+        const item = getItem(state.activeItem);
+        const noteEl = document.getElementById('item-note-input');
+        const freeText = (noteEl ? noteEl.value : (state.itemNote || '')).trim();
+        const note = state.itemOptions.concat(freeText ? [freeText] : []).join('、');
+        const qty = state.itemQty || 1;
+        const temp = state.itemTemp || '';
+        addToCart(state.activeItem, temp, note, qty);
+        showMessage(`已加入購物車：${item ? item.name : ''}${temp ? '（' + temp + '）' : ''} ×${qty}`);
+        state.activeItem = null;
+        renderCustomer();
+      } else if (action === 'jump-cat') {
+        const el = document.getElementById('sec-' + btn.dataset.cat);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (action === 'inc-line') {
+        const line = state.cart.find(l => l.lineId === btn.dataset.line);
+        if (line) { line.qty += 1; renderCustomer(); }
+      } else if (action === 'dec-line') {
+        const line = state.cart.find(l => l.lineId === btn.dataset.line);
+        if (line) {
+          if (line.qty <= 1) state.cart = state.cart.filter(l => l.lineId !== line.lineId);
+          else line.qty -= 1;
+          renderCustomer();
+        }
+      } else if (action === 'rm-line') {
+        state.cart = state.cart.filter(l => l.lineId !== btn.dataset.line);
+        renderCustomer();
+      } else if (action === 'set-dining') {
+        state.diningType = btn.dataset.type;
+        renderCustomer();
+      } else if (action === 'close-sheet') {
+        state.cartOpen = false;
+        renderCustomer();
+      } else if (action === 'submit-order') {
+        submitOrder();
+      } else if (action === 'new-order') {
+        try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} // 解除一機一單鎖定、重置
+        state.currentOrderId = null;
+        state.cart = [];
+        state.diningType = '內用';
+        state.tableInfo = '';
+        state.phone = '';
+        state.memberPhone = '';
+        state.note = '';
+        state.cartOpen = false;
+        state.activeItem = null;
+        state.itemOptions = [];
+        state.submitting = false;
+        state.showBoard = false;
+        renderCustomer();
+      }
+    }
+
+    async function submitOrder() {
+      if (state.submitting) return; // 防連點：避免一次送出產生重複訂單
+      if (cartCount() === 0) {
+        showMessage('請先加入餐點');
+        return;
+      }
+      const phone = (state.phone || '').trim();
+      // 必填手機（每張單綁一支手機作為身份）；外帶另需取餐名稱
+      if (!/^09\d{8}$/.test(phone)) { showMessage('請填正確手機號碼（09 開頭共 10 碼）'); return; }
+      if (state.diningType === '外帶' && !state.tableInfo.trim()) { showMessage('外帶請填取餐名稱'); return; }
+      state.submitting = true;
+      // 全店唯一取餐號（線上交易取號，保證不撞；失敗退回裝置前綴）
+      let no = await nextDailyNo();
+      if (!no) no = orderNo(orders);
+      const order = {
+        id: getDeviceId() + '-' + Date.now(), // 裝置碼+時間戳：全域唯一，離線重傳也不會在雲端重複
+        deviceId: getDeviceId(),
+        no: no,
+        type: state.diningType,
+        table: state.tableInfo.trim() || (state.diningType === '內用' ? '未填桌號' : '未填名稱'),
+        phone: phone,
+        note: state.note.trim(),
+        items: state.cart.map(line => {
+          const mi = getItem(line.id);
+          return { id: line.id, name: mi ? mi.name : '', price: mi ? mi.price : 0, temp: line.temp || '', note: line.note || '', qty: line.qty };
+        }),
+        total: cartTotal(),
+        status: 'new',
+        pay: { method: null, paid: false },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      orders = orders.concat([order]); // 樂觀更新，雲端快照回來後會自動校正
+      syncAddOrder(order);
+      state.currentOrderId = order.id;
+      try { localStorage.setItem('xyg-cust-active', order.id); } catch (e) {} // 一機一單：記住進行中訂單
+      state.cart = [];
+      state.cartOpen = false;
+      showMessage('訂單已送出');
+      renderCustomer();
+    }
+
+    cartBar.addEventListener('click', () => {
+      state.activeItem = null;
+      state.cartOpen = !state.cartOpen;
+      renderCustomer();
+    });
+
+    window.addEventListener('scroll', () => {
+      if (!state.currentOrderId && !state.activeItem && !state.cartOpen) updateActiveCat();
+    }, { passive: true });
+
+    // 一機一單：若本機有進行中的訂單，重開仍回到該訂單狀態頁（避免同一支手機重複下單）
+    try { state.currentOrderId = localStorage.getItem('xyg-cust-active') || null; } catch (e) {}
+
+    renderCustomer();
+    initSync(list => {
+      orders = list;
+      // 進行中的訂單若已被清掉（例如隔日清除），自動解鎖回到點餐
+      if (state.currentOrderId && !orders.some(o => o.id === state.currentOrderId)) {
+        const stillCaching = list.length === 0;
+        if (!stillCaching) { state.currentOrderId = null; try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} }
+      }
+      // 雲端任何變動都即時重畫（號碼變色/文字改變/消失都會跟著動）；已保留焦點與捲動位置避免干擾點餐
+      renderCustomer();
+    }, { today: true });
+    initConfig(() => {
+      if (!state.currentOrderId) renderCustomer();
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service Worker failed:', err));
+    }
+  </script>
+</body>
+</html>
