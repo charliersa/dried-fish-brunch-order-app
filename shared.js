@@ -5,11 +5,11 @@ const MENU = [
     name: '吐司類',
     icon: '🍞',
     items: [
-      { id: 't1', name: '起司蛋', price: 30 },
-      { id: 't2', name: '蔬菜蛋', price: 30 },
-      { id: 't3', name: '豬排蛋', price: 40 },
-      { id: 't4', name: '麥香雞', price: 35 },
-      { id: 't5', name: '鮪魚蛋', price: 40 },
+      { id: 't1', name: '起司蛋吐司', price: 30 },
+      { id: 't2', name: '蔬菜蛋吐司', price: 30 },
+      { id: 't3', name: '豬排蛋吐司', price: 40 },
+      { id: 't4', name: '麥香雞吐司', price: 35 },
+      { id: 't5', name: '鮪魚蛋吐司', price: 40 },
     ],
   },
   {
@@ -17,11 +17,11 @@ const MENU = [
     name: '蛋餅類',
     icon: '🥞',
     items: [
-      { id: 'e1', name: '起司', price: 30 },
-      { id: 'e2', name: '蔬菜', price: 30 },
-      { id: 'e3', name: '豬排', price: 40 },
-      { id: 'e4', name: '鮪魚', price: 40 },
-      { id: 'e5', name: '黃金泡菜', price: 40 },
+      { id: 'e1', name: '起司蛋餅', price: 30 },
+      { id: 'e2', name: '蔬菜蛋餅', price: 30 },
+      { id: 'e3', name: '豬排蛋餅', price: 40 },
+      { id: 'e4', name: '鮪魚蛋餅', price: 40 },
+      { id: 'e5', name: '黃金泡菜蛋餅', price: 40 },
     ],
   },
   {
