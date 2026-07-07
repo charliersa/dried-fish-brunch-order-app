@@ -19,4 +19,6 @@ const PUSH_CONFIG = {
   vapidKey: 'BLJ8kVxrh5r1K529hX2hf7X8mjgalB5lWfA3StFGXLxbPsSO-2xlJCLXaXjDQh7BLO7-Gom1YRvurFEHk1_pkgE',
   // push-server 部署到 Vercel 後的網址，結尾加 /api/notify
   notifyEndpoint: 'https://push-server-rho.vercel.app/api/notify',
+  // 顧客送出訂單 → 推播到後端(廚房/收銀)裝置
+  notifyBackendEndpoint: 'https://push-server-rho.vercel.app/api/notify-backend',
 };

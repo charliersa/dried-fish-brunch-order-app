@@ -874,6 +874,13 @@
         if (token) syncUpdateOrder(order.id, { fcmToken: token });
       } catch (e) { console.warn('推播設定略過', e); }
     }
+    // 通知後端(廚房/收銀)有新訂單 → 後端裝置推播（關網頁也會響）
+    function notifyBackend(order) {
+      try {
+        if (typeof PUSH_CONFIG === 'undefined' || !PUSH_CONFIG.notifyBackendEndpoint || PUSH_CONFIG.notifyBackendEndpoint.indexOf('PASTE') !== -1) return;
+        fetch(PUSH_CONFIG.notifyBackendEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ no: order.no, table: order.table, type: order.type }) }).catch(() => {});
+      } catch (e) {}
+    }
 
     async function submitOrder() {
       if (state.submitting) return; // 防連點：避免一次送出產生重複訂單
@@ -912,6 +919,7 @@
       orders = orders.concat([order]); // 樂觀更新，雲端快照回來後會自動校正
       syncAddOrder(order);
       ensureOrderPush(order); // 取得推播 token 存進訂單（完成時才推播得到）
+      notifyBackend(order); // 通知後端有新訂單（關網頁也會響）
       state.currentOrderId = order.id;
       try { localStorage.setItem('xyg-cust-active', order.id); } catch (e) {} // 一機一單：記住進行中訂單
       state.cart = [];
