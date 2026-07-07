@@ -560,7 +560,15 @@
       `;
     }
 
+    // 讓等餐時螢幕不自動休眠（保持螢幕開著，餐好才能自動跳出可取餐）
+    let _wakeLock = null;
+    async function keepScreenAwake() {
+      try { if ('wakeLock' in navigator && state.currentOrderId && (!_wakeLock || _wakeLock.released)) { _wakeLock = await navigator.wakeLock.request('screen'); } } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && state.currentOrderId) keepScreenAwake(); });
+
     function renderConfirmation(order) {
+      keepScreenAwake(); // 保持螢幕不休眠
       const stepOrder = ['new', 'cook', 'done'];
       const stepMap = {
         new: { label: '新訂單', color: 'var(--amber)', icon: '🔔' },
@@ -601,6 +609,7 @@
             <div style="display:flex;align-items:center;gap:4px;margin:18px 4px 8px;flex-wrap:wrap;justify-content:center;">${stepHtml}</div>
             <div style="font-size:13px;margin-top:6px;${isReady ? 'color:#fff;font-weight:800;' : 'color:var(--ink-soft);'}">${order.picked ? '✅ 已完成取餐，謝謝惠顧！' : (isReady ? '🍽️ 餐點好囉！請到櫃台取餐' : '畫面會自動更新，請留意叫號')}</div>
           </div>
+          ${(!isReady && !order.picked) ? `<div style="background:#fff8e6;border:1.5px solid #f0b64b;border-radius:14px;padding:12px 14px;margin-top:12px;text-align:center;color:#a86a12;font-weight:800;font-size:14px;">📱 請保持此畫面開啟、螢幕先別鎖<br><span style="font-weight:500;font-size:13px;color:#b07a1e;">餐點好了會在這裡自動跳出「可取餐」並響鈴 🔔</span></div>` : ''}
           <div style="background:#fff;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 2px 6px rgba(28,94,122,.07);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <span style="font-weight:700;">${order.type} · ${escapeHtml(order.table)}${order.phone ? ` · 📞 ${escapeHtml(order.phone)}` : ''}</span>
