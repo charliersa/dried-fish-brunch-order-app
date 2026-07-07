@@ -794,20 +794,32 @@
         if (!ctx) return;
         if (ctx.state === 'suspended') ctx.resume();
         const now = ctx.currentTime;
-        [880, 1174.66].forEach((freq, i) => { // A5 → D6 清脆上行「叮咚」
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.value = freq;
-          const t0 = now + i * 0.14;
-          gain.gain.setValueAtTime(0.0001, t0);
-          gain.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
-          osc.connect(gain).connect(ctx.destination);
-          osc.start(t0);
-          osc.stop(t0 + 0.4);
+        // 主控：壓縮器當限幅器，音量催到最大也不破音
+        const master = ctx.createDynamicsCompressor();
+        master.threshold.value = -8; master.knee.value = 6; master.ratio.value = 14;
+        master.attack.value = 0.002; master.release.value = 0.25;
+        const outGain = ctx.createGain();
+        outGain.gain.value = 1.0; // 最大音量
+        master.connect(outGain).connect(ctx.destination);
+        // 響亮的「叮—咚—叮」三連音，每個音疊基頻(三角波)＋高八度(正弦)更飽滿明亮
+        const seq = [880, 1174.66, 1760]; // A5 → D6 → A6
+        seq.forEach((freq, i) => {
+          const t0 = now + i * 0.17;
+          const dur = 0.55;
+          [['triangle', 1, 0.95], ['sine', 2, 0.5]].forEach(([type, mult, peak]) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq * mult;
+            gain.gain.setValueAtTime(0.0001, t0);
+            gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            osc.connect(gain).connect(master);
+            osc.start(t0);
+            osc.stop(t0 + dur + 0.05);
+          });
         });
-        if (navigator.vibrate) navigator.vibrate([30, 40, 30]); // 手機同時輕震動（沒有就略過）
+        if (navigator.vibrate) navigator.vibrate([60, 50, 60, 50, 140]); // 更明顯的震動
       } catch (e) {}
     }
 
