@@ -590,15 +590,16 @@
         </div>
       `; }).join('');
 
+      const isReady = order.status === 'done' && !order.picked; // 可取餐狀態
       app.innerHTML = `
         <div>
-          <div style="background:#fff;border-radius:22px;padding:24px;box-shadow:0 4px 14px rgba(28,94,122,.1);text-align:center;">
-            <div style="font-size:40px;">🐟</div>
-            <h2 style="margin:6px 0 2px;font-weight:900;">訂單已送出！</h2>
-            <div style="color:var(--ink-soft);font-size:14px;">取餐號碼</div>
-            <div style="font-size:40px;font-weight:900;color:var(--pink);letter-spacing:2px;">${order.no}</div>
+          <div style="background:${isReady ? 'linear-gradient(135deg,#3fb27f,#2c8f62)' : '#fff'};border-radius:22px;padding:24px;box-shadow:0 4px 14px rgba(28,94,122,.1);text-align:center;${isReady ? 'color:#fff;' : ''}">
+            <div style="font-size:46px;">${order.picked ? '✅' : (isReady ? '🎉' : '🐟')}</div>
+            <h2 style="margin:6px 0 2px;font-weight:900;${isReady ? 'font-size:26px;' : ''}">${order.picked ? '已完成取餐' : (isReady ? '可以取餐囉！' : '訂單已送出！')}</h2>
+            <div style="font-size:14px;${isReady ? 'color:rgba(255,255,255,.9);' : 'color:var(--ink-soft);'}">${isReady ? '請憑此號碼到櫃台取餐' : '取餐號碼'}</div>
+            <div style="font-size:${isReady ? '58px' : '40px'};font-weight:900;color:${isReady ? '#fff' : 'var(--pink)'};letter-spacing:2px;line-height:1.1;">${order.no}</div>
             <div style="display:flex;align-items:center;gap:4px;margin:18px 4px 8px;flex-wrap:wrap;justify-content:center;">${stepHtml}</div>
-            <div style="font-size:13px;color:var(--ink-soft);margin-top:6px;">${order.picked ? '✅ 已完成取餐，謝謝惠顧！' : (order.status === 'done' ? '餐點已完成，可於下方按號碼確認取餐 🎉' : '畫面會自動更新，請留意叫號')}</div>
+            <div style="font-size:13px;margin-top:6px;${isReady ? 'color:#fff;font-weight:800;' : 'color:var(--ink-soft);'}">${order.picked ? '✅ 已完成取餐，謝謝惠顧！' : (isReady ? '🍽️ 餐點好囉！請到櫃台取餐' : '畫面會自動更新，請留意叫號')}</div>
           </div>
           <div style="background:#fff;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 2px 6px rgba(28,94,122,.07);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
