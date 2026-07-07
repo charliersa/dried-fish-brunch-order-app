@@ -857,6 +857,8 @@
       if (!o) { _prevNotified = null; return; }
       if (_prevNotified === false && o.notified === true && !o.rejected) {
         playReadySound(); // 廚房按「通知取餐」→ 響
+        state.showBoard = true; // 展開叫號板
+        setTimeout(() => { try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); } }, 60); // 強制跳到最上面，直接顯示可取餐畫面
       }
       _prevNotified = !!o.notified;
     }
