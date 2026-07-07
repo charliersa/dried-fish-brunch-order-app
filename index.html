@@ -376,8 +376,12 @@
       return CURRENT_MENU.find(cat => cat.items.some(it => it.id === itemId));
     }
 
+    // 顧客點餐端要隱藏的分類（廚房／收銀／後台不受影響）
+    function isHiddenForCustomer(cat) {
+      return cat.id === 'sandwich' || (cat.name && cat.name.indexOf('三明治') !== -1);
+    }
     function visibleCategories() {
-      return CURRENT_MENU.filter(cat => cat.items.some(it => it.active !== false));
+      return CURRENT_MENU.filter(cat => !isHiddenForCustomer(cat) && cat.items.some(it => it.active !== false));
     }
 
     function addToCart(id, temp, note, qty) {
@@ -608,6 +612,7 @@
           ${(order.status === 'done' || order.picked)
             ? `<button class="button-primary" data-action="new-order" style="width:100%;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:700;">${order.picked ? '✅ 已取餐，再點一單' : '再點一單'}</button>`
             : `<div style="text-align:center;color:var(--ink-soft);font-size:13px;margin-top:6px;">餐點製作中，完成後即可再點下一單 🍳</div>`}
+          <button class="button-primary" data-action="home" style="width:100%;margin-top:10px;background:#fff;color:var(--ink-soft);border:1.5px solid var(--line);font-weight:700;justify-content:center;">🏠 回首頁</button>
         </div>
       `;
 
@@ -756,6 +761,24 @@
         submitOrder();
       } else if (action === 'new-order') {
         try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} // 解除一機一單鎖定、重置
+        state.currentOrderId = null;
+        state.cart = [];
+        state.diningType = '內用';
+        state.tableInfo = '';
+        state.phone = '';
+        state.memberPhone = '';
+        state.note = '';
+        state.cartOpen = false;
+        state.activeItem = null;
+        state.itemOptions = [];
+        state.submitting = false;
+        state.showBoard = false;
+        renderCustomer();
+      } else if (action === 'home') {
+        const o = orders.find(x => x.id === state.currentOrderId);
+        const inProgress = o && o.status !== 'done' && !o.picked;
+        if (inProgress && !confirm('回首頁後，這支手機就不會再顯示這張訂單的叫號（訂單仍會照常製作）。確定要回首頁嗎？')) return;
+        try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} // 解除一機一單鎖定
         state.currentOrderId = null;
         state.cart = [];
         state.diningType = '內用';
