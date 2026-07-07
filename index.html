@@ -292,6 +292,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
   <script src="firebase-config.js"></script>
+  <script src="neworder-sound.js"></script>
   <script src="shared.js"></script>
   <script>document.head.insertAdjacentHTML('beforeend', '<style>' + getSharedStyles() + '</style>');</script>
   <script>
@@ -815,47 +816,52 @@
       _audioCtx = new AC();
       return _audioCtx;
     }
-    // 手機需在使用者互動中解鎖音訊；點餐過程的觸控會先解鎖，送出時才發得出聲音
+    // 提示音音檔（HTMLAudio，相容性最高）；手機互動一次即解鎖
+    const _alertAudio = new Audio(window.ALERT_SOUND_URI || '');
+    _alertAudio.preload = 'auto';
     function _unlockAudio() {
       const ctx = _getAudioCtx();
       if (ctx && ctx.state === 'suspended') ctx.resume();
+      try { _alertAudio.volume = 0; const p = _alertAudio.play(); if (p && p.then) p.then(() => { _alertAudio.pause(); _alertAudio.currentTime = 0; _alertAudio.volume = 1; }).catch(() => { _alertAudio.volume = 1; }); } catch (e) { _alertAudio.volume = 1; }
     }
     document.addEventListener('touchend', _unlockAudio, { passive: true });
     document.addEventListener('click', _unlockAudio, { passive: true });
-    // 餐點製作完成時，顧客手機響（響亮、響兩輪，避免顧客沒注意）
+    // 可取餐時顧客手機響：優先播音檔（相容性最高，平板/舊手機也能響），失敗才用 Web Audio
     function playReadySound() {
+      let ok = false;
+      try {
+        if (window.ALERT_SOUND_URI) {
+          _alertAudio.currentTime = 0; _alertAudio.volume = 1;
+          const p = _alertAudio.play();
+          if (p && p.catch) p.catch(() => _playReadyWebAudio());
+          ok = true;
+        }
+      } catch (e) {}
+      if (!ok) _playReadyWebAudio();
+      if (navigator.vibrate) navigator.vibrate([120, 60, 120, 60, 200]);
+    }
+    function _playReadyWebAudio() {
       try {
         const ctx = _getAudioCtx();
         if (!ctx) return;
         if (ctx.state === 'suspended') ctx.resume();
         const now = ctx.currentTime;
-        const master = ctx.createDynamicsCompressor();
-        master.threshold.value = -8; master.knee.value = 6; master.ratio.value = 14;
-        master.attack.value = 0.002; master.release.value = 0.25;
-        const outGain = ctx.createGain();
-        outGain.gain.value = 1.0; // 最大音量
-        master.connect(outGain).connect(ctx.destination);
-        const seq = [880, 1174.66, 1760]; // A5 → D6 → A6 三連音
-        for (let rep = 0; rep < 2; rep++) { // 響兩輪
-          const base = now + rep * 0.95;
+        const seq = [880, 1174.66, 1568];
+        for (let rep = 0; rep < 2; rep++) {
           seq.forEach((freq, i) => {
-            const t0 = base + i * 0.17;
-            const dur = 0.55;
-            [['triangle', 1, 0.95], ['sine', 2, 0.5]].forEach(([type, mult, peak]) => {
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = type;
-              osc.frequency.value = freq * mult;
-              gain.gain.setValueAtTime(0.0001, t0);
-              gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
-              gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-              osc.connect(gain).connect(master);
-              osc.start(t0);
-              osc.stop(t0 + dur + 0.05);
-            });
+            const t0 = now + rep * 0.85 + i * 0.16;
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+            osc.connect(g).connect(ctx.destination);
+            osc.start(t0);
+            osc.stop(t0 + 0.46);
           });
         }
-        if (navigator.vibrate) navigator.vibrate([120, 60, 120, 60, 200]);
       } catch (e) {}
     }
     // 偵測「自己的訂單」是否剛被廚房按完成 → 響鈴（首次載入或已完成的舊單不會響）
