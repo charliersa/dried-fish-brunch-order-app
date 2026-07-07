@@ -11,3 +11,12 @@ const FIREBASE_CONFIG = {
   appId: "1:109591710302:web:c28ba1576d82d0802802cf",
   measurementId: "G-VQ3GZLB92V"
 };
+
+// ===== 推播通知設定（餐點完成時通知顧客手機）=====
+// 兩個值都要填：① vapidKey（顧客端用） ② notifyEndpoint（廚房端用）
+const PUSH_CONFIG = {
+  // Firebase 主控台 → 專案設定 → Cloud Messaging → 網路推送憑證（Web Push certificates）→ 產生金鑰對
+  vapidKey: 'BLJ8kVxrh5r1K529hX2hf7X8mjgalB5lWfA3StFGXLxbPsSO-2xlJCLXaXjDQh7BLO7-Gom1YRvurFEHk1_pkgE',
+  // push-server 部署到 Vercel 後的網址，結尾加 /api/notify
+  notifyEndpoint: 'https://push-server-rho.vercel.app/api/notify',
+};

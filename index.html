@@ -290,6 +290,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="shared.js"></script>
   <script>document.head.insertAdjacentHTML('beforeend', '<style>' + getSharedStyles() + '</style>');</script>
@@ -858,6 +859,20 @@
       }
       _prevMyStatus = o.status;
     }
+    // 顧客授權通知 → 取得 FCM token 存進訂單，餐點完成時才推播得到（關網頁也收得到）
+    async function ensureOrderPush(order) {
+      try {
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+        if (typeof firebase === 'undefined' || typeof firebase.messaging !== 'function') return;
+        if (typeof PUSH_CONFIG === 'undefined' || !PUSH_CONFIG.vapidKey || PUSH_CONFIG.vapidKey.indexOf('PASTE') !== -1) return;
+        let perm = Notification.permission;
+        if (perm === 'default') perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+        const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js', { scope: './fcm-scope/' });
+        const token = await firebase.messaging().getToken({ vapidKey: PUSH_CONFIG.vapidKey, serviceWorkerRegistration: reg });
+        if (token) syncUpdateOrder(order.id, { fcmToken: token });
+      } catch (e) { console.warn('推播設定略過', e); }
+    }
 
     async function submitOrder() {
       if (state.submitting) return; // 防連點：避免一次送出產生重複訂單
@@ -870,6 +885,8 @@
       if (!/^09\d{8}$/.test(phone)) { showMessage('請填正確手機號碼（09 開頭共 10 碼）'); return; }
       if (state.diningType === '外帶' && !state.tableInfo.trim()) { showMessage('外帶請填取餐名稱'); return; }
       state.submitting = true;
+      // 在「送出」手勢中先要求通知權限（餐點完成才推播得到）
+      try { if ('Notification' in window && Notification.permission === 'default' && typeof PUSH_CONFIG !== 'undefined' && PUSH_CONFIG.vapidKey && PUSH_CONFIG.vapidKey.indexOf('PASTE') === -1) Notification.requestPermission(); } catch (e) {}
       // 全店唯一取餐號（線上交易取號，保證不撞；失敗退回裝置前綴）
       let no = await nextDailyNo();
       if (!no) no = orderNo(orders);
@@ -893,6 +910,7 @@
       };
       orders = orders.concat([order]); // 樂觀更新，雲端快照回來後會自動校正
       syncAddOrder(order);
+      ensureOrderPush(order); // 取得推播 token 存進訂單（完成時才推播得到）
       state.currentOrderId = order.id;
       try { localStorage.setItem('xyg-cust-active', order.id); } catch (e) {} // 一機一單：記住進行中訂單
       state.cart = [];
