@@ -772,6 +772,45 @@
       }
     }
 
+    // ===== 點餐成功提示音（Web Audio，免外部音檔）=====
+    let _audioCtx = null;
+    function _getAudioCtx() {
+      if (_audioCtx) return _audioCtx;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      _audioCtx = new AC();
+      return _audioCtx;
+    }
+    // 手機需在使用者互動中解鎖音訊；點餐過程的觸控會先解鎖，送出時才發得出聲音
+    function _unlockAudio() {
+      const ctx = _getAudioCtx();
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+    document.addEventListener('touchend', _unlockAudio, { passive: true });
+    document.addEventListener('click', _unlockAudio, { passive: true });
+    function playOrderSound() {
+      try {
+        const ctx = _getAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+        [880, 1174.66].forEach((freq, i) => { // A5 → D6 清脆上行「叮咚」
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          const t0 = now + i * 0.14;
+          gain.gain.setValueAtTime(0.0001, t0);
+          gain.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(t0);
+          osc.stop(t0 + 0.4);
+        });
+        if (navigator.vibrate) navigator.vibrate([30, 40, 30]); // 手機同時輕震動（沒有就略過）
+      } catch (e) {}
+    }
+
     async function submitOrder() {
       if (state.submitting) return; // 防連點：避免一次送出產生重複訂單
       if (cartCount() === 0) {
@@ -811,6 +850,7 @@
       state.cart = [];
       state.cartOpen = false;
       showMessage('訂單已送出');
+      playOrderSound(); // 點餐成功聲音提醒
       renderCustomer();
     }
 
