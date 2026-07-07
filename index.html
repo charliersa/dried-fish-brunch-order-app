@@ -788,39 +788,52 @@
     }
     document.addEventListener('touchend', _unlockAudio, { passive: true });
     document.addEventListener('click', _unlockAudio, { passive: true });
-    function playOrderSound() {
+    // 餐點製作完成時，顧客手機響（響亮、響兩輪，避免顧客沒注意）
+    function playReadySound() {
       try {
         const ctx = _getAudioCtx();
         if (!ctx) return;
         if (ctx.state === 'suspended') ctx.resume();
         const now = ctx.currentTime;
-        // 主控：壓縮器當限幅器，音量催到最大也不破音
         const master = ctx.createDynamicsCompressor();
         master.threshold.value = -8; master.knee.value = 6; master.ratio.value = 14;
         master.attack.value = 0.002; master.release.value = 0.25;
         const outGain = ctx.createGain();
         outGain.gain.value = 1.0; // 最大音量
         master.connect(outGain).connect(ctx.destination);
-        // 響亮的「叮—咚—叮」三連音，每個音疊基頻(三角波)＋高八度(正弦)更飽滿明亮
-        const seq = [880, 1174.66, 1760]; // A5 → D6 → A6
-        seq.forEach((freq, i) => {
-          const t0 = now + i * 0.17;
-          const dur = 0.55;
-          [['triangle', 1, 0.95], ['sine', 2, 0.5]].forEach(([type, mult, peak]) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = type;
-            osc.frequency.value = freq * mult;
-            gain.gain.setValueAtTime(0.0001, t0);
-            gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
-            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-            osc.connect(gain).connect(master);
-            osc.start(t0);
-            osc.stop(t0 + dur + 0.05);
+        const seq = [880, 1174.66, 1760]; // A5 → D6 → A6 三連音
+        for (let rep = 0; rep < 2; rep++) { // 響兩輪
+          const base = now + rep * 0.95;
+          seq.forEach((freq, i) => {
+            const t0 = base + i * 0.17;
+            const dur = 0.55;
+            [['triangle', 1, 0.95], ['sine', 2, 0.5]].forEach(([type, mult, peak]) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = type;
+              osc.frequency.value = freq * mult;
+              gain.gain.setValueAtTime(0.0001, t0);
+              gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+              gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+              osc.connect(gain).connect(master);
+              osc.start(t0);
+              osc.stop(t0 + dur + 0.05);
+            });
           });
-        });
-        if (navigator.vibrate) navigator.vibrate([60, 50, 60, 50, 140]); // 更明顯的震動
+        }
+        if (navigator.vibrate) navigator.vibrate([120, 60, 120, 60, 200]);
       } catch (e) {}
+    }
+    // 偵測「自己的訂單」是否剛被廚房按完成 → 響鈴（首次載入或已完成的舊單不會響）
+    let _prevMyStatus = null;
+    function checkMyOrderReady(list) {
+      if (!state.currentOrderId) { _prevMyStatus = null; return; }
+      const o = list.find(x => x.id === state.currentOrderId);
+      if (!o) { _prevMyStatus = null; return; }
+      if (_prevMyStatus && _prevMyStatus !== 'done' && o.status === 'done' && !o.rejected) {
+        playReadySound();
+      }
+      _prevMyStatus = o.status;
     }
 
     async function submitOrder() {
@@ -862,7 +875,6 @@
       state.cart = [];
       state.cartOpen = false;
       showMessage('訂單已送出');
-      playOrderSound(); // 點餐成功聲音提醒
       renderCustomer();
     }
 
@@ -887,6 +899,7 @@
         const stillCaching = list.length === 0;
         if (!stillCaching) { state.currentOrderId = null; try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} }
       }
+      checkMyOrderReady(list); // 餐點完成 → 響鈴通知顧客
       // 雲端任何變動都即時重畫（號碼變色/文字改變/消失都會跟著動）；已保留焦點與捲動位置避免干擾點餐
       renderCustomer();
     }, { today: true });
