@@ -323,8 +323,8 @@
     // 叫號板：準備取餐(藍)→已可取餐(紅)；顧客可按自己的紅色號碼確認取餐(變藍→消失)
     function renderCallBoard(highlightNo) {
       const today = orders.filter(o => isToday(o.createdAt));
-      const preparing = today.filter(o => o.status !== 'done').sort((a, b) => a.createdAt - b.createdAt);          // 藍：製作中/排隊
-      const ready = today.filter(o => o.status === 'done' && !o.picked).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)); // 紅：可取餐（顧客按取餐後消失）
+      const preparing = today.filter(o => !o.notified && !o.picked).sort((a, b) => a.createdAt - b.createdAt);          // 藍：製作中/排隊（尚未被通知取餐）
+      const ready = today.filter(o => o.notified && !o.picked).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)); // 紅：可取餐（廚房按通知取餐後亮，顧客按取餐後消失）
       const justPicked = state.justPickedId ? today.find(o => o.id === state.justPickedId) : null; // 剛按取餐→短暫顯示藍色
 
       const prepChip = (o) => {
@@ -590,7 +590,7 @@
         </div>
       `; }).join('');
 
-      const isReady = order.status === 'done' && !order.picked; // 可取餐狀態
+      const isReady = !!order.notified && !order.picked; // 可取餐狀態（廚房按「通知取餐」才亮）
       app.innerHTML = `
         <div>
           <div style="background:${isReady ? 'linear-gradient(135deg,#3fb27f,#2c8f62)' : '#fff'};border-radius:22px;padding:24px;box-shadow:0 4px 14px rgba(28,94,122,.1);text-align:center;${isReady ? 'color:#fff;' : ''}">
@@ -611,7 +611,7 @@
             <div style="display:flex;align-items:center;justify-content:space-between;font-weight:900;border-top:1px solid var(--line);margin-top:8px;padding-top:8px;"><span>合計</span><span style="color:var(--pink);">$${order.total}</span></div>
           </div>
           <div style="margin-top:14px;">${renderCallBoard(order.no)}</div>
-          ${(order.status === 'done' || order.picked)
+          ${(order.notified || order.picked)
             ? `<button class="button-primary" data-action="new-order" style="width:100%;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:700;">${order.picked ? '✅ 已取餐，再點一單' : '再點一單'}</button>`
             : `<div style="text-align:center;color:var(--ink-soft);font-size:13px;margin-top:6px;">餐點製作中，完成後即可再點下一單 🍳</div>`}
           <button class="button-primary" data-action="home" style="width:100%;margin-top:10px;background:#fff;color:var(--ink-soft);border:1.5px solid var(--line);font-weight:700;justify-content:center;">🏠 回首頁</button>
@@ -850,15 +850,15 @@
       } catch (e) {}
     }
     // 偵測「自己的訂單」是否剛被廚房按完成 → 響鈴（首次載入或已完成的舊單不會響）
-    let _prevMyStatus = null;
+    let _prevNotified = null;
     function checkMyOrderReady(list) {
-      if (!state.currentOrderId) { _prevMyStatus = null; return; }
+      if (!state.currentOrderId) { _prevNotified = null; return; }
       const o = list.find(x => x.id === state.currentOrderId);
-      if (!o) { _prevMyStatus = null; return; }
-      if (_prevMyStatus && _prevMyStatus !== 'done' && o.status === 'done' && !o.rejected) {
-        playReadySound();
+      if (!o) { _prevNotified = null; return; }
+      if (_prevNotified === false && o.notified === true && !o.rejected) {
+        playReadySound(); // 廚房按「通知取餐」→ 響
       }
-      _prevMyStatus = o.status;
+      _prevNotified = !!o.notified;
     }
     // 顧客授權通知 → 取得 FCM token 存進訂單，餐點完成時才推播得到（關網頁也收得到）
     async function ensureOrderPush(order) {
