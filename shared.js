@@ -280,7 +280,16 @@ let CURRENT_MENU = MENU.map(cat => Object.assign({}, cat, {
 }));
 
 const CONFIG_LS = 'xyg-config';
-const CONFIG = { db: null, mode: 'local', onChange: null, pollTimer: null, data: null };
+// 一次性保護：把「本次改版前」既有的 localStorage 設定另存一份，
+// 避免新版每次存檔的鏡像機制蓋掉可能是唯一備份的舊資料。只會執行一次。
+try {
+  if (localStorage.getItem(CONFIG_LS) && !localStorage.getItem('xyg-config-prev')) {
+    localStorage.setItem('xyg-config-prev', localStorage.getItem(CONFIG_LS));
+  }
+} catch (e) {}
+const CONFIG = { db: null, mode: 'local', onChange: null, pollTimer: null, data: null, loaded: false };
+// 設定是否已載入完成（雲端模式下，未載入前不可存檔，否則會用預設值覆蓋雲端資料）
+function isConfigLoaded() { return CONFIG.mode !== 'cloud' || CONFIG.loaded; }
 
 function defaultConfig() {
   return { menu: CURRENT_MENU, ent: JSON.parse(JSON.stringify(DEFAULT_ENT)) };
@@ -306,6 +315,8 @@ function initConfig(onChange) {
         if (!d) { d = defaultConfig(); db.collection('config').doc('admin').set(d).catch(() => {}); }
         d = normalizeConfig(d);
         CONFIG.data = d;
+        CONFIG.loaded = true; // 雲端資料已到位，這之後存檔才安全
+        try { localStorage.setItem(CONFIG_LS, JSON.stringify(d)); } catch (e) {} // 本機備份
         CURRENT_MENU = d.menu;
         const json = JSON.stringify(d);
         if (json === CONFIG._lastJson) return; // 設定沒變就不重畫
@@ -326,6 +337,7 @@ function startLocalConfig() {
     try { d = JSON.parse(localStorage.getItem(CONFIG_LS) || 'null'); } catch (e) {}
     d = normalizeConfig(d);
     CONFIG.data = d;
+    CONFIG.loaded = true;
     CURRENT_MENU = d.menu;
     const json = JSON.stringify(d);
     if (json === CONFIG._lastJson) return; // 設定沒變就不重畫
@@ -338,9 +350,16 @@ function startLocalConfig() {
 }
 
 function saveConfig(data) {
+  // 保護：雲端資料尚未載入完成就存檔，會把寫死的預設值整份覆蓋上去，
+  // 導致成本/員工/食材/設備等自訂資料全部消失。此時一律拒絕儲存。
+  if (CONFIG.mode === 'cloud' && !CONFIG.loaded) {
+    console.warn('設定尚未載入完成，已阻止儲存以免覆蓋雲端資料');
+    return Promise.reject(new Error('CONFIG_NOT_LOADED'));
+  }
   data = normalizeConfig(data);
   CONFIG.data = data;
   CURRENT_MENU = data.menu;
+  try { localStorage.setItem(CONFIG_LS, JSON.stringify(data)); } catch (e) {} // 每次存檔都留一份本機備份
   if (CONFIG.mode === 'cloud' && CONFIG.db) {
     return CONFIG.db.collection('config').doc('admin').set(data).catch(e => console.warn('設定儲存失敗', e));
   }
