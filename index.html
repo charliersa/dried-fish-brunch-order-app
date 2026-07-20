@@ -833,36 +833,11 @@
         if (window.ALERT_SOUND_URI) {
           _alertAudio.currentTime = 0; _alertAudio.volume = 1;
           const p = _alertAudio.play();
-          if (p && p.catch) p.catch(() => _playReadyWebAudio());
+          if (p && p.catch) p.catch(() => {});
           ok = true;
         }
       } catch (e) {}
-      if (!ok) _playReadyWebAudio();
       if (navigator.vibrate) navigator.vibrate([120, 60, 120, 60, 200]);
-    }
-    function _playReadyWebAudio() {
-      try {
-        const ctx = _getAudioCtx();
-        if (!ctx) return;
-        if (ctx.state === 'suspended') ctx.resume();
-        const now = ctx.currentTime;
-        const seq = [880, 1174.66, 1568];
-        for (let rep = 0; rep < 2; rep++) {
-          seq.forEach((freq, i) => {
-            const t0 = now + rep * 0.85 + i * 0.16;
-            const osc = ctx.createOscillator();
-            const g = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.value = freq;
-            g.gain.setValueAtTime(0.0001, t0);
-            g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
-            osc.connect(g).connect(ctx.destination);
-            osc.start(t0);
-            osc.stop(t0 + 0.46);
-          });
-        }
-      } catch (e) {}
     }
     // 偵測「自己的訂單」是否剛被廚房按完成 → 響鈴（首次載入或已完成的舊單不會響）
     let _prevNotified = null;
@@ -876,6 +851,15 @@
         setTimeout(() => { try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); } }, 60); // 強制跳到最上面，直接顯示可取餐畫面
       }
       _prevNotified = !!o.notified;
+    }
+    // 叫號板：只要有「任何」新號碼被廚房通知取餐就響（自己的訂單由上面處理，不重複響）
+    let _knownReadyIds = null;
+    function checkBoardReady(list) {
+      const ids = new Set(list.filter(o => isToday(o.createdAt) && !o.rejected && o.notified && !o.picked).map(o => o.id));
+      if (_knownReadyIds === null) { _knownReadyIds = ids; return; } // 首次載入不響，避免把既有號碼全當成新的
+      const fresh = [...ids].filter(id => !_knownReadyIds.has(id) && id !== state.currentOrderId);
+      _knownReadyIds = ids;
+      if (fresh.length) playReadySound();
     }
     // 顧客授權通知 → 取得 FCM token 存進訂單，餐點完成時才推播得到（關網頁也收得到）
     async function ensureOrderPush(order) {
@@ -967,6 +951,7 @@
         if (!stillCaching) { state.currentOrderId = null; try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} }
       }
       checkMyOrderReady(list); // 餐點完成 → 響鈴通知顧客
+      checkBoardReady(list);   // 叫號板：任何號碼被叫到都響
       // 雲端任何變動都即時重畫（號碼變色/文字改變/消失都會跟著動）；已保留焦點與捲動位置避免干擾點餐
       renderCustomer();
     }, { today: true });
