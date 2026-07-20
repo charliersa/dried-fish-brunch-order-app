@@ -378,10 +378,6 @@
       return CURRENT_MENU.find(cat => cat.items.some(it => it.id === itemId));
     }
 
-    // 顧客點餐端要隱藏的分類（廚房／收銀／後台不受影響）
-    function isHiddenForCustomer(cat) {
-      return cat.id === 'sandwich' || (cat.name && cat.name.indexOf('三明治') !== -1);
-    }
     function visibleCategories() {
       return CURRENT_MENU.filter(cat => !isHiddenForCustomer(cat) && cat.items.some(it => it.active !== false));
     }

@@ -62,6 +62,15 @@ function noteOptionsFor(catId) {
   return NOTE_OPTIONS[catId] || NOTE_OPTIONS.default;
 }
 
+// 顧客點餐頁是否隱藏此分類。
+// 後台「顧客可見」開關（cat.hidden）優先；沒設定過的舊資料沿用原本寫死的規則
+// （三明治系列只給廚房/收銀/後台看，顧客點餐頁不顯示）。
+function isHiddenForCustomer(cat) {
+  if (!cat) return false;
+  if (typeof cat.hidden === 'boolean') return cat.hidden;
+  return cat.id === 'sandwich' || (cat.name && cat.name.indexOf('三明治') !== -1);
+}
+
 const STORAGE_KEY = 'xyg-order-system';
 
 function loadOrders() {
