@@ -312,7 +312,16 @@ function initConfig(onChange) {
     db.collection('config').doc('admin').onSnapshot(
       snap => {
         let d = snap.exists ? snap.data() : null;
-        if (!d) { d = defaultConfig(); db.collection('config').doc('admin').set(d).catch(() => {}); }
+        if (!d) {
+          // 啟用離線持久化後，開頁的第一個快照是從本機快取來的；快取是空的時候
+          // snap.exists 會是 false，但這不代表雲端真的沒有資料。
+          // 此時既不可顯示預設值（畫面會閃一下預設菜單），
+          // 更不可把預設值寫回雲端（會把既有資料整份覆蓋掉）。
+          // 一律略過，等伺服器的快照到達再判斷。
+          if (snap.metadata && snap.metadata.fromCache) return;
+          d = defaultConfig();
+          db.collection('config').doc('admin').set(d).catch(() => {});
+        }
         d = normalizeConfig(d);
         CONFIG.data = d;
         CONFIG.loaded = true; // 雲端資料已到位，這之後存檔才安全
