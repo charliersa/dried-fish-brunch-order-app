@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1c5e7a" />
+  <link rel="manifest" href="manifest.json" />
+  <title>小魚乾早午餐 · 顧客回饋</title>
+  <style>
+    /* 共用樣式由 shared.js 於頁尾注入 */
+    .fb-card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 18px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(28, 94, 122, .07);
+    }
+
+    .fb-q {
+      font-weight: 800;
+      font-size: 15px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .fb-q .req {
+      color: var(--pink-deep);
+      font-size: 13px;
+    }
+
+    /* 星等評分 */
+    .stars {
+      display: flex;
+      gap: 6px;
+    }
+
+    .star {
+      font-size: 34px;
+      line-height: 1;
+      cursor: pointer;
+      color: #dbe9f0;
+      transition: transform .1s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .star.on {
+      color: #f5b544;
+    }
+
+    .star:active {
+      transform: scale(1.2);
+    }
+
+    .stars-hint {
+      font-size: 12px;
+      color: var(--ink-soft);
+      margin-top: 6px;
+      min-height: 16px;
+      font-weight: 700;
+    }
+
+    /* 選項膠囊 */
+    .chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1.5px solid var(--line);
+      background: #fff;
+      color: var(--ink-soft);
+      font-weight: 700;
+      font-size: 14px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .chip.on {
+      background: var(--pink);
+      border-color: var(--pink);
+      color: #fff;
+    }
+
+    .fb-input,
+    .fb-textarea {
+      width: 100%;
+      border: 1.5px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+      color: var(--ink);
+      outline: none;
+      background: #fff;
+    }
+
+    .fb-textarea {
+      resize: vertical;
+      min-height: 88px;
+    }
+
+    .fb-submit {
+      width: 100%;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      background: var(--pink);
+      color: #fff;
+      font-weight: 900;
+      font-size: 17px;
+      padding: 15px;
+      border-radius: 16px;
+      box-shadow: 0 6px 16px rgba(216, 75, 132, .35);
+      cursor: pointer;
+    }
+
+    .fb-submit:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
+    .thanks {
+      text-align: center;
+      padding: 40px 18px;
+    }
+
+    .thanks .emoji {
+      font-size: 64px;
+    }
+
+    .thanks h2 {
+      margin: 10px 0 6px;
+      font-weight: 900;
+      font-size: 24px;
+    }
+
+    .thanks p {
+      color: var(--ink-soft);
+      font-size: 15px;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="top-row">
+        <div class="brand">
+          <div class="brand-logo">🐟</div>
+          <div class="brand-text">
+            <h1>小魚乾早午餐</h1>
+            <p>DRIED FISH BRUNCH</p>
+          </div>
+        </div>
+        <div class="info-chip">💬 顧客回饋</div>
+      </div>
+      <div class="address">📝 謝謝您的用餐！花 30 秒告訴我們感受，讓小魚乾更好 🐟</div>
+    </header>
+    <main id="app"></main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="shared.js"></script>
+  <script>document.head.insertAdjacentHTML('beforeend', '<style>' + getSharedStyles() + '</style>');</script>
+  <script>
+    const app = document.getElementById('app');
+
+    // 星等評分題（必填的整體滿意度 + 各面向）
+    const RATINGS = [
+      { key: 'overall', label: '整體滿意度', icon: '⭐', required: true },
+      { key: 'taste',   label: '餐點口味',   icon: '😋' },
+      { key: 'speed',   label: '出餐速度',   icon: '⏱️' },
+      { key: 'service', label: '服務態度',   icon: '🙋' },
+      { key: 'clean',   label: '環境整潔',   icon: '🧼' },
+      { key: 'value',   label: '價格划算度', icon: '💰' },
+    ];
+    const STAR_HINT = ['', '😞 很不滿意', '😕 不太滿意', '🙂 普通', '😊 滿意', '🤩 非常滿意'];
+
+    const state = {
+      ratings: {},          // key -> 1..5
+      favorites: [],        // 最喜歡的餐點（品項名）
+      revisit: '',          // 再訪意願
+      comment: '',
+      phone: '',
+      submitting: false,
+      done: false,
+    };
+
+    // 從目前生效的菜單抓出顧客看得到的品項，當「最喜歡的餐點」選項
+    function favoriteChoices() {
+      const menu = (typeof CURRENT_MENU !== 'undefined' && CURRENT_MENU.length) ? CURRENT_MENU : [];
+      const names = [];
+      menu.forEach(cat => {
+        if (isHiddenForCustomer(cat)) return;
+        (cat.items || []).forEach(it => {
+          if (it.active !== false && !it.soldOut && it.name) names.push(it.name);
+        });
+      });
+      return names;
+    }
+
+    function ratingBlock(r) {
+      const cur = state.ratings[r.key] || 0;
+      const stars = [1, 2, 3, 4, 5].map(n =>
+        `<span class="star ${n <= cur ? 'on' : ''}" data-action="star" data-key="${r.key}" data-n="${n}">★</span>`
+      ).join('');
+      return `
+        <div class="fb-card">
+          <div class="fb-q">${r.icon} ${r.label} ${r.required ? '<span class="req">＊必填</span>' : ''}</div>
+          <div class="stars">${stars}</div>
+          <div class="stars-hint" id="hint-${r.key}">${cur ? STAR_HINT[cur] : ''}</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      if (state.done) {
+        app.innerHTML = `
+          <div class="thanks">
+            <div class="emoji">🐟💛</div>
+            <h2>收到您的回饋了！</h2>
+            <p>謝謝您抽空給小魚乾建議，</p>
+            <p>我們會努力把每一份餐點做得更好 🍳</p>
+            <button class="button-primary" data-action="again" style="margin:22px auto 0;justify-content:center;padding:11px 22px;">再填一份</button>
+          </div>
+        `;
+        attach();
+        return;
+      }
+
+      const favs = favoriteChoices();
+      const favBlock = favs.length ? `
+        <div class="fb-card">
+          <div class="fb-q">🍽️ 最喜歡哪一道？<span style="font-weight:600;color:var(--ink-soft);font-size:13px;">（可複選）</span></div>
+          <div class="chip-grid">
+            ${favs.map(n => `<button type="button" class="chip ${state.favorites.includes(n) ? 'on' : ''}" data-action="fav" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}
+          </div>
+        </div>` : '';
+
+      const REVISIT = ['🤩 一定會', '🙂 應該會', '🤔 再看看', '😕 可能不會'];
+
+      app.innerHTML = `
+        ${RATINGS.map(ratingBlock).join('')}
+        ${favBlock}
+        <div class="fb-card">
+          <div class="fb-q">💗 會想再來、或推薦給朋友嗎？</div>
+          <div class="chip-grid">
+            ${REVISIT.map(v => `<button type="button" class="chip ${state.revisit === v ? 'on' : ''}" data-action="revisit" data-val="${v}">${v}</button>`).join('')}
+          </div>
+        </div>
+        <div class="fb-card">
+          <div class="fb-q">📝 想對我們說的話</div>
+          <textarea id="comment" class="fb-textarea" placeholder="喜歡什麼、哪裡可以更好、想吃的新品⋯⋯都歡迎告訴我們！">${escapeHtml(state.comment)}</textarea>
+        </div>
+        <div class="fb-card">
+          <div class="fb-q">📞 手機（選填）</div>
+          <input id="phone" class="fb-input" type="tel" inputmode="numeric" maxlength="10" placeholder="留手機方便我們回覆／未來優惠通知" value="${escapeHtml(state.phone)}">
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:6px;">＊僅供本店聯繫使用，不會外流</div>
+        </div>
+        <button class="fb-submit" data-action="submit" ${state.submitting ? 'disabled' : ''}>${state.submitting ? '送出中⋯' : '💌 送出回饋'}</button>
+        <div style="text-align:center;margin-top:14px;">
+          <a href="index.html" style="color:var(--ink-soft);font-size:14px;text-decoration:none;font-weight:700;">← 回到點餐</a>
+        </div>
+      `;
+      attach();
+    }
+
+    function attach() {
+      app.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', handle));
+      const comment = document.getElementById('comment');
+      if (comment) comment.addEventListener('input', e => state.comment = e.target.value);
+      const phone = document.getElementById('phone');
+      if (phone) phone.addEventListener('input', e => {
+        const v = e.target.value.replace(/\D/g, '').slice(0, 10);
+        state.phone = v;
+        if (e.target.value !== v) e.target.value = v;
+      });
+    }
+
+    function handle(e) {
+      const el = e.currentTarget;
+      const action = el.dataset.action;
+      // 保留輸入框內容（避免重畫時被清掉）
+      const commentEl = document.getElementById('comment');
+      if (commentEl) state.comment = commentEl.value;
+
+      if (action === 'star') {
+        state.ratings[el.dataset.key] = Number(el.dataset.n);
+        render();
+      } else if (action === 'fav') {
+        const name = el.dataset.name;
+        if (state.favorites.includes(name)) state.favorites = state.favorites.filter(x => x !== name);
+        else state.favorites = state.favorites.concat([name]);
+        render();
+      } else if (action === 'revisit') {
+        state.revisit = state.revisit === el.dataset.val ? '' : el.dataset.val;
+        render();
+      } else if (action === 'submit') {
+        submitFeedback();
+      } else if (action === 'again') {
+        state.ratings = {};
+        state.favorites = [];
+        state.revisit = '';
+        state.comment = '';
+        state.phone = '';
+        state.submitting = false;
+        state.done = false;
+        render();
+        window.scrollTo(0, 0);
+      }
+    }
+
+    function submitFeedback() {
+      if (state.submitting) return;
+      if (!state.ratings.overall) {
+        showMessage('請先給「整體滿意度」評分 ⭐');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      state.submitting = true;
+      render();
+
+      const fb = {
+        id: getDeviceId() + '-' + Date.now(),
+        deviceId: getDeviceId(),
+        ratings: state.ratings,
+        overall: state.ratings.overall || 0,
+        favorites: state.favorites,
+        revisit: state.revisit,
+        comment: (state.comment || '').trim(),
+        phone: (state.phone || '').trim(),
+        createdAt: Date.now(),
+        date: new Date().toLocaleDateString('zh-TW'),
+      };
+
+      saveFeedback(fb).then(() => {
+        state.done = true;
+        state.submitting = false;
+        render();
+        window.scrollTo(0, 0);
+      });
+    }
+
+    // 存到 Firestore 的 feedback 集合；連不上時退回本機 localStorage（不遺失）
+    function saveFeedback(fb) {
+      const db = ensureDb();
+      if (db && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        return db.collection('feedback').doc(String(fb.id)).set(fb)
+          .catch(e => {
+            console.warn('雲端寫入失敗，改存本機', e);
+            saveFeedbackLocal(fb);
+          });
+      }
+      saveFeedbackLocal(fb);
+      return Promise.resolve();
+    }
+
+    function saveFeedbackLocal(fb) {
+      try {
+        const key = 'xyg-feedback';
+        const list = JSON.parse(localStorage.getItem(key) || '[]');
+        list.push(fb);
+        localStorage.setItem(key, JSON.stringify(list));
+      } catch (e) {}
+    }
+
+    // 載入營運設定（取得目前菜單當「最喜歡的餐點」選項），設定就緒後重畫一次
+    initConfig(() => { if (!state.done && !state.submitting) render(); });
+    render();
+  </script>
+</body>
+</html>
