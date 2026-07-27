@@ -301,14 +301,107 @@ const CONFIG = { db: null, mode: 'local', onChange: null, pollTimer: null, data:
 function isConfigLoaded() { return CONFIG.mode !== 'cloud' || CONFIG.loaded; }
 
 function defaultConfig() {
-  return { menu: CURRENT_MENU, ent: JSON.parse(JSON.stringify(DEFAULT_ENT)) };
+  return { menu: CURRENT_MENU, ent: JSON.parse(JSON.stringify(DEFAULT_ENT)), announcements: [] };
 }
 
 function normalizeConfig(d) {
   if (!d) d = defaultConfig();
   d.menu = (d.menu && d.menu.length) ? d.menu : CURRENT_MENU;
   d.ent = Object.assign({ staff: [], ingredients: [], equipment: [], costs: [] }, d.ent || {});
+  d.announcements = Array.isArray(d.announcements) ? d.announcements : []; // 公告欄（後台手動新增）
   return d;
+}
+
+// ===== 公告欄：後台手動新增的公告，隨營運設定一起同步到顧客點餐頁 =====
+// 每則公告：{ id, text, type: 'info' | 'warn' | 'promo', active, createdAt }
+// 陣列順序就是顯示順序（後台可上移／下移）
+const ANNOUNCE_TYPES = {
+  info: { label: '一般', icon: '📢', bg: '#e3f1fb', line: '#3e9bd1', ink: '#1c5e7a' },
+  warn: { label: '重要', icon: '⚠️', bg: '#fdecea', line: '#e5534b', ink: '#b3322b' },
+  promo: { label: '優惠', icon: '🎉', bg: '#fceaf1', line: '#ec6398', ink: '#d84b84' },
+};
+function announceStyle(type) { return ANNOUNCE_TYPES[type] || ANNOUNCE_TYPES.info; }
+
+// all=true 連隱藏的一起回傳（後台管理用）；預設只回顧客看得到的
+function getAnnouncements(all) {
+  const list = (CONFIG.data && Array.isArray(CONFIG.data.announcements)) ? CONFIG.data.announcements : [];
+  return all ? list : list.filter(a => a && a.active !== false && String(a.text || '').trim());
+}
+
+function saveAnnouncements(list) {
+  return saveConfig(Object.assign({}, CONFIG.data || defaultConfig(), { announcements: list }));
+}
+
+// 公告卡片列表 HTML（懸浮視窗與後台預覽共用）；沒有公告回空字串
+function renderAnnouncementItems() {
+  return getAnnouncements().map(a => {
+    const s = announceStyle(a.type);
+    return `<div class="ann-item" style="background:${s.bg};border-left:4px solid ${s.line};color:${s.ink};">
+        <span class="ann-icon">${s.icon}</span>
+        <div class="ann-text">${escapeHtml(a.text).replace(/\n/g, '<br>')}</div>
+      </div>`;
+  }).join('');
+}
+
+// ---- 懸浮公告視窗：按標題列的「📢 店家公告」才打開 ----
+function isAnnouncementsOpen() {
+  const slot = document.getElementById('ann-modal');
+  return !!(slot && slot.firstChild);
+}
+
+function openAnnouncements() {
+  const slot = document.getElementById('ann-modal');
+  if (!slot) return;
+  const rows = renderAnnouncementItems();
+  slot.innerHTML = `
+    <div class="ann-mask">
+      <div class="ann-window" role="dialog" aria-label="店家公告">
+        <div class="ann-window-head">
+          <span class="ann-window-title">📌 店家公告</span>
+          <button type="button" class="ann-close" aria-label="關閉">✕</button>
+        </div>
+        <div class="ann-window-body">${rows || '<div class="ann-empty">目前沒有公告</div>'}</div>
+      </div>
+    </div>`;
+  // 點遮罩空白處或右上角 ✕ 都可關閉；點視窗內容不關
+  const mask = slot.querySelector('.ann-mask');
+  if (mask) mask.addEventListener('click', e => { if (e.target === mask) closeAnnouncements(); });
+  const x = slot.querySelector('.ann-close');
+  if (x) x.addEventListener('click', closeAnnouncements);
+  document.body.style.overflow = 'hidden'; // 視窗開著時背景不跟著捲
+}
+
+function closeAnnouncements() {
+  const slot = document.getElementById('ann-modal');
+  if (slot) slot.innerHTML = '';
+  document.body.style.overflow = '';
+}
+
+// 顧客開啟點餐頁時是否已自動跳過公告；每次載入頁面只強制跳一次，
+// 之後設定再同步（例如店家改菜單）都不會又彈出來打斷點餐。
+let _annAutoOpened = false;
+
+// 更新標題列的公告按鈕（有幾則、要不要顯示），並在視窗開著時同步內容。
+// 設定每次同步都會呼叫，所以後台一改，顧客這邊的按鈕與視窗都會跟著變。
+function syncAnnouncementUI() {
+  const list = getAnnouncements();
+  const pill = document.getElementById('ann-pill');
+  if (pill) {
+    pill.style.display = list.length ? '' : 'none'; // 沒公告就不佔版面
+    pill.innerHTML = `📢 店家公告${list.length > 1 ? `<span class="ann-badge">${list.length}</span>` : ''}`;
+    if (!pill.dataset.bound) {
+      pill.dataset.bound = '1';
+      pill.addEventListener('click', openAnnouncements);
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAnnouncements(); });
+    }
+  }
+  if (isAnnouncementsOpen()) { openAnnouncements(); return; } // 開著就重畫成最新內容
+  // 顧客一開頁面就強制跳出公告（只有掛了 #ann-modal 的顧客點餐頁會生效，
+  // 廚房／收銀／叫號／後台沒有掛載點，openAnnouncements 會直接略過）
+  if (!_annAutoOpened && list.length) {
+    _annAutoOpened = true;
+    openAnnouncements();
+  }
 }
 
 // 註冊營運設定變更監聽；callback 帶入 { menu, ent }
@@ -435,6 +528,62 @@ async function nextDailyNo() {
   }
 }
 
+// ===== 取餐通知狀態：決定要跟顧客說「可以關掉頁面」還是「請保持畫面開啟」=====
+// iOS 的網頁推播只有把網站「加入主畫面」後才收得到，Safari 分頁裡拿不到權限
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isStandaloneApp() {
+  try {
+    return window.navigator.standalone === true
+      || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  } catch (e) { return false; }
+}
+
+// 回傳 'on'（推播已生效）/ 'pending'（已授權，token 設定中）/ 'ask'（可要求授權）
+//     / 'blocked'（使用者封鎖）/ 'ios'（iPhone 要先加入主畫面）/ 'off'（裝置或設定不支援）
+function pushState(order) {
+  const configured = typeof PUSH_CONFIG !== 'undefined' && PUSH_CONFIG && PUSH_CONFIG.vapidKey
+    && PUSH_CONFIG.vapidKey.indexOf('PASTE') === -1;
+  if (!configured || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    return (isIOSDevice() && !isStandaloneApp()) ? 'ios' : 'off';
+  }
+  if (Notification.permission === 'denied') return 'blocked';
+  if (Notification.permission === 'granted') return (order && order.fcmToken) ? 'on' : 'pending';
+  if (isIOSDevice() && !isStandaloneApp()) return 'ios';
+  return 'ask';
+}
+
+// 確認訂單頁的取餐通知說明區塊；依實際推播狀態換文案，
+// 推播已生效時就不要再叫顧客「保持畫面開啟」——那正是這功能要解決的事。
+function renderPickupNotice(order) {
+  const box = (bg, line, ink, html) =>
+    `<div style="background:${bg};border:1.5px solid ${line};border-radius:14px;padding:12px 14px;margin-top:12px;text-align:center;color:${ink};font-weight:800;font-size:14px;">${html}</div>`;
+  const sub = (color, t) => `<span style="font-weight:500;font-size:13px;color:${color};">${t}</span>`;
+  const ok = html => box('#e6f6ee', '#54b98a', '#217a55', html);
+  const warn = html => box('#fff8e6', '#f0b64b', '#a86a12', html);
+
+  switch (pushState(order)) {
+    case 'on':
+      return ok(`🔔 取餐通知已開啟<br>${sub('#2e8c66', '可以關掉這頁去忙，餐點好了手機會跳通知提醒你 📲')}`);
+    case 'pending':
+      return ok(`🔔 取餐通知設定中…<br>${sub('#2e8c66', '完成後就可以關掉這頁，餐點好了手機會通知你')}`);
+    case 'ask':
+      return warn(`🔔 想關掉頁面也收得到通知嗎？<br>${sub('#b07a1e', '開啟後餐點完成會直接推播到你的手機')}
+        <button class="button-primary" data-action="enable-push" style="width:100%;justify-content:center;margin-top:10px;padding:10px;font-size:14px;">開啟取餐通知</button>`);
+    case 'ios':
+      return warn(`📱 iPhone 要先「加入主畫面」才收得到通知<br>${sub('#b07a1e',
+        '按 Safari 下方的分享鈕 →「加入主畫面」，之後從主畫面開啟本頁點餐，就能關掉頁面等通知。<br>現在請先保持此畫面開啟，餐點好了會自動跳出「可取餐」並響鈴 🔔')}`);
+    case 'blocked':
+      return warn(`🔕 你的瀏覽器封鎖了通知<br>${sub('#b07a1e',
+        '請在網址列旁的鎖頭圖示把「通知」改成允許；在那之前請保持此畫面開啟，餐點好了會自動跳出「可取餐」並響鈴 🔔')}`);
+    default:
+      return warn(`📱 請保持此畫面開啟、螢幕先別鎖<br>${sub('#b07a1e', '餐點好了會在這裡自動跳出「可取餐」並響鈴 🔔')}`);
+  }
+}
+
 function escapeHtml(text) {
   return String(text || '')
     .replace(/&/g, '&amp;')
@@ -507,7 +656,23 @@ function getSharedStyles() {
       position: relative;
       background: linear-gradient(120deg, var(--ink-soft), #6fb7d0);
       color: #fff;
-      padding-bottom: 30px;
+      padding-bottom: 34px;
+    }
+
+    /* 標題區底部的拱形波浪邊：一排連續弧線，直接用 SVG 當背景平鋪，不用額外標籤。
+       header 的 padding-bottom 已留好這塊高度，不會壓到導覽按鈕。 */
+    header::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 24px;
+      pointer-events: none;
+      background-repeat: repeat-x;
+      background-position: left bottom;
+      background-size: 48px 24px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24' viewBox='0 0 48 24'%3E%3Cpath d='M0 24 Q24 -4 48 24' fill='none' stroke='%23ffffff' stroke-opacity='.45' stroke-width='2'/%3E%3C/svg%3E");
     }
 
     .top-row {
@@ -762,6 +927,112 @@ function getSharedStyles() {
       margin-top: 10px;
       padding-top: 8px;
       border-top: 1px solid var(--line);
+    }
+
+    /* ===== 公告：標題列的小按鈕 + 懸浮視窗 ===== */
+    .ann-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      margin-left: 2px;
+      border-radius: 999px;
+      background: var(--pink);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .ann-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(12, 48, 66, .55);
+    }
+
+    .ann-window {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 440px;
+      max-height: 78vh;
+      border-radius: 22px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 18px 44px rgba(12, 48, 66, .38);
+    }
+
+    .ann-window-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 15px 16px;
+      background: linear-gradient(120deg, var(--ink-soft), #6fb7d0);
+      color: #fff;
+    }
+
+    .ann-window-title {
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+
+    .ann-close {
+      flex-shrink: 0;
+      width: 30px;
+      height: 30px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .25);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .ann-window-body {
+      padding: 14px;
+      overflow-y: auto;
+    }
+
+    .ann-empty {
+      padding: 22px 0;
+      text-align: center;
+      font-size: 13px;
+      color: #9db4bf;
+    }
+
+    .ann-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      border-radius: 14px;
+      padding: 11px 13px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 6px rgba(16, 60, 80, .13);
+    }
+
+    .ann-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .ann-icon {
+      font-size: 17px;
+      line-height: 1.45;
+      flex-shrink: 0;
+    }
+
+    .ann-text {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.6;
+      word-break: break-word;
     }
 
     @media (max-width: 768px) {
