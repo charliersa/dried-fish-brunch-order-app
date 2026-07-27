@@ -430,7 +430,8 @@
     const cartInfo = document.getElementById('cart-info');
     let orders = loadOrders();
 
-    // 附加商品預設種子（雲端 config/addons 還沒資料時顯示）；由店家管理端（menu-system.html）維護
+    // 附加商品預設種子（雲端 config/addons 還沒建立時顯示）；店家在管理後台 admin.html 的「附加商品」分頁維護
+    // （改這裡也要同步改 Dried-Fish-Brunch/admin.html 的 DEFAULT_ADDONS）
     const DEFAULT_ADDONS = [
       { id: 'addon-milktea', name: '鮮乳',
         img: 'https://res.cloudinary.com/dbiirpmpy/image/upload/v1785163481/fish-brunch/Fresh_milk_tea.png',
@@ -1170,7 +1171,7 @@
     });
     initAddons();
 
-    // 附加商品：訂閱 config/addons（店家管理端 menu-system.html 維護）
+    // 附加商品：訂閱 config/addons（店家在管理後台 admin.html 的「附加商品」分頁維護）
     function initAddons() {
       // 先用預設種子讓顧客馬上看得到（鮮乳／手作蘿蔔糕），雲端有資料再覆蓋
       if (!state.addons.length) { state.addons = DEFAULT_ADDONS; if (!state.currentOrderId) renderCustomer(); }
@@ -1178,11 +1179,11 @@
       if (!db) return;
       db.collection('config').doc('addons').onSnapshot(snap => {
         const list = (snap.exists && snap.data() && Array.isArray(snap.data().list)) ? snap.data().list : null;
-        // 雲端真的有一份清單才覆蓋；查無文件或空清單時維持預設種子
-        if (list && list.length) {
-          state.addons = list;
-          if (!state.currentOrderId) renderCustomer();
-        }
+        // 雲端已經有這份文件就完全以它為準（店家全部下架或刪光時，這一區也要跟著不見）；
+        // 查無文件才維持預設種子
+        if (!list) return;
+        state.addons = list.filter(a => a && a.active !== false && Array.isArray(a.options) && a.options.length);
+        if (!state.currentOrderId) renderCustomer();
       }, err => { console.warn('附加商品同步中斷', err); });
     }
 
