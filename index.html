@@ -432,7 +432,7 @@
 
     // 附加商品預設種子（雲端 config/addons 還沒資料時顯示）；由店家管理端（menu-system.html）維護
     const DEFAULT_ADDONS = [
-      { id: 'addon-milktea', name: '鮮奶茶',
+      { id: 'addon-milktea', name: '鮮乳',
         img: 'https://res.cloudinary.com/dbiirpmpy/image/upload/v1785163481/fish-brunch/Fresh_milk_tea.png',
         options: [ { id: 'bottle900', label: '900ml罐', price: 85, orig: 105 } ] },
       { id: 'addon-radishcake', name: '手作蘿蔔糕',
@@ -1024,10 +1024,24 @@
     // 提示音音檔（HTMLAudio，相容性最高）；手機互動一次即解鎖
     const _alertAudio = new Audio(window.ALERT_SOUND_URI || '');
     _alertAudio.preload = 'auto';
+    let _audioUnlocked = false;
     function _unlockAudio() {
       const ctx = _getAudioCtx();
       if (ctx && ctx.state === 'suspended') ctx.resume();
-      try { _alertAudio.volume = 0; const p = _alertAudio.play(); if (p && p.then) p.then(() => { _alertAudio.pause(); _alertAudio.currentTime = 0; _alertAudio.volume = 1; }).catch(() => { _alertAudio.volume = 1; }); } catch (e) { _alertAudio.volume = 1; }
+      if (_audioUnlocked) return;          // 只解鎖一次，之後點畫面不會再碰音檔
+      _audioUnlocked = true;
+      // iOS/Safari 的 volume 是唯讀（設 0 沒用，會整段放出來）；改用 muted 靜音解鎖，
+      // 顧客一開系統／點畫面才不會聽到取餐提示音
+      const reset = () => {
+        try { _alertAudio.pause(); _alertAudio.currentTime = 0; } catch (e) {}
+        _alertAudio.muted = false; _alertAudio.volume = 1;
+      };
+      try {
+        _alertAudio.muted = true;
+        const p = _alertAudio.play();
+        if (p && p.then) p.then(reset).catch(() => { reset(); _audioUnlocked = false; });
+        else reset();
+      } catch (e) { reset(); _audioUnlocked = false; }
     }
     document.addEventListener('touchend', _unlockAudio, { passive: true });
     document.addEventListener('click', _unlockAudio, { passive: true });
@@ -1036,7 +1050,7 @@
       let ok = false;
       try {
         if (window.ALERT_SOUND_URI) {
-          _alertAudio.currentTime = 0; _alertAudio.volume = 1;
+          _alertAudio.currentTime = 0; _alertAudio.muted = false; _alertAudio.volume = 1;
           const p = _alertAudio.play();
           if (p && p.catch) p.catch(() => {});
           ok = true;
@@ -1158,7 +1172,7 @@
 
     // 附加商品：訂閱 config/addons（店家管理端 menu-system.html 維護）
     function initAddons() {
-      // 先用預設種子讓顧客馬上看得到（鮮奶茶／手作蘿蔔糕），雲端有資料再覆蓋
+      // 先用預設種子讓顧客馬上看得到（鮮乳／手作蘿蔔糕），雲端有資料再覆蓋
       if (!state.addons.length) { state.addons = DEFAULT_ADDONS; if (!state.currentOrderId) renderCustomer(); }
       const db = ensureDb();
       if (!db) return;
