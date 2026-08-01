@@ -2,9 +2,16 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1c5e7a" />
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="小魚乾點餐（測試）" />
+  <script src="pwa-install.js" data-note="開啟更快、全螢幕，餐點好了還能通知你" defer></script>
   <title>小魚乾早午餐 · 線上點餐</title>
   <style>
     /* 共用樣式由 shared.js 於頁尾注入 */
@@ -146,7 +153,7 @@
       position: fixed;
       left: 16px;
       right: 16px;
-      bottom: 16px;
+      bottom: calc(16px + env(safe-area-inset-bottom));
       max-width: 608px;
       margin: 0 auto;
       display: flex;
@@ -401,6 +408,8 @@
         <button type="button" id="ann-pill" style="display:none;">📢 店家公告</button>
         <a href="feedback.html">💬 點餐回饋表單</a>
         <a href="#sec-addons">🧋 附加商品</a>
+        <!-- 只有「還沒裝且裝得起來」時，pwa-install.js 才會把這顆按鈕顯示出來 -->
+        <button type="button" data-pwa-install style="display:none;">📲 安裝 App</button>
       </div>
     </header>
     <main id="app"></main>

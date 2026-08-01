@@ -1,27 +1,40 @@
 // 顧客手機點餐 App（獨立版）Service Worker
-const CACHE_NAME = 'xyg-customer-pwa-v13';
+const CACHE_PREFIX = 'xyg-customer-pwa-';
+const CACHE_NAME = CACHE_PREFIX + 'v14';
 const ASSETS = [
   './',
   './index.html',
+  './feedback.html',
   './shared.js',
   './firebase-config.js',
   './manifest.json',
   './sw.js',
-  './icon-192.svg',
-  './icon-512.svg'
+  './pwa-install.js',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png',
+  './apple-touch-icon.png',
+  './favicon-32.png'
 ];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(cache =>
+      // 逐一快取：單一檔案抓不到（改名／暫時 404）不該讓整個 Service Worker 安裝失敗
+      Promise.all(ASSETS.map(url =>
+        cache.add(url).catch(err => console.warn('[sw] 略過快取', url, err))
+      ))
+    )
   );
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      // 只刪自己這支 App 的舊版快取；同一個網域底下還有別站的 SW，不要互相清掉
+      keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map(key => caches.delete(key))
     )).then(() => self.clients.claim())
   );
 });
@@ -48,7 +61,7 @@ self.addEventListener('fetch', event => {
   // 其他跨網域（Firestore 連線）不攔截，交給 Firebase SDK（離線由其 IndexedDB 持久化處理）
   if (!sameOrigin) return;
 
-  // 同源：network-first（有網拿最新，離線退回快取）
+  // 同源：network-first（有網拿最新版，避免改版被舊快取卡住；離線退回快取）
   event.respondWith(
     fetch(req).then(response => {
       if (response && response.status === 200) {
