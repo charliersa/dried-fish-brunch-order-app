@@ -181,7 +181,7 @@ function initSync(onChange, opts) {
     query.onSnapshot(
       snap => {
         const list = snap.docs.map(doc => Object.assign({ id: doc.id }, doc.data()));
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch (e) {}
+        backupOrders(list, !!opts.today);
         if (SYNC.onChange) SYNC.onChange(list);
       },
       err => {
@@ -192,6 +192,19 @@ function initSync(onChange, opts) {
     return;
   }
   startLocalSync();
+}
+
+// 把雲端訂單留一份在 localStorage 當離線備援。
+// 廚房／收銀／叫號／點餐頁都只訂閱「今日」訂單，若直接整份覆蓋，備援裡的歷史訂單
+// 會被洗掉；之後同一台裝置在離線狀態下開後台，就會以為以前的紀錄不見了。
+// → 只有拿到完整清單時才整份取代，今日範圍的更新一律保留今天以前的資料。
+function backupOrders(list, todayOnly) {
+  try {
+    const data = todayOnly
+      ? loadOrders().filter(o => !isToday(o.createdAt)).concat(list)
+      : list;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {}
 }
 
 function startLocalSync() {
