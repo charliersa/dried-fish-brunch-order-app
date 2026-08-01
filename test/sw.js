@@ -1,6 +1,6 @@
 // 顧客手機點餐 App（獨立版）Service Worker（測試）
 const CACHE_PREFIX = 'xyg-customer-test-pwa-';
-const CACHE_NAME = CACHE_PREFIX + 'v14';
+const CACHE_NAME = CACHE_PREFIX + 'v15';
 const ASSETS = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
   './manifest.json',
   './sw.js',
   './pwa-install.js',
+  './presence.js',
   './icon-192.png',
   './icon-512.png',
   './icon-maskable-512.png',

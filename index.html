@@ -431,6 +431,8 @@
   <script src="firebase-config.js"></script>
   <script src="neworder-sound.js"></script>
   <script src="shared.js"></script>
+  <!-- 讓後台看得到「現在幾人在看」：每分鐘送一次心跳 -->
+  <script src="presence.js" data-page="手機點餐"></script>
   <script>document.head.insertAdjacentHTML('beforeend', '<style>' + getSharedStyles() + '</style>');</script>
   <script>
     applyDeviceCodeFromUrl();
