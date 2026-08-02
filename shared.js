@@ -1,15 +1,101 @@
 // 共享資料與常用函數
 const MENU = [
   {
+    id: 'cat1784562993985',
+    name: '套餐系列',
+    icon: '🐠',
+    hidden: false,
+    items: [
+      {
+        id: 'x1784563196880',
+        name: '蔬菜蛋+雞塊3個+紅茶',
+        price: 70,
+        baseDrink: '紅茶',
+        opts: [
+          '❌美生菜',
+          '❌蘋果片',
+          '❌美乃滋',
+          '❌番茄醬',
+          '❌黑胡椒',
+        ],
+        addons: [
+          { name: '奶茶', price: 10, drink: true },
+          { name: '豆漿', price: 0, drink: true },
+          { name: '鮮奶茶', price: 15, drink: true },
+        ],
+      },
+      {
+        id: 'x1784592752219',
+        name: '❤️蘿蔔糕+紅茶（優惠中）',
+        price: 50,
+        opts: [
+          '❌醬油膏',
+        ],
+        addons: [
+          { name: '奶茶', price: 10, drink: true },
+          { name: '豆漿', price: 0, drink: true },
+          { name: '鮮奶茶', price: 15, drink: true },
+          { name: '+蛋', price: 15 },
+        ],
+      },
+      { id: 'x1784593411086', name: '炸雞腿排吐司+紅茶', price: 60, baseDrink: '紅茶', opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒'] },
+      {
+        id: 'x1784682791686',
+        name: '薯條+雞塊*紅茶',
+        price: 85,
+        opts: [
+          '冰',
+          '熱',
+        ],
+        addons: [
+          { name: '奶茶', price: 10, drink: true },
+          { name: '鮮奶茶', price: 15, drink: true },
+          { name: '豆漿', price: 0, drink: true },
+        ],
+      },
+      {
+        id: 'x1784682867587',
+        name: '泡菜蛋餅（微辣）+紅茶',
+        price: 50,
+        addons: [
+          { name: '奶茶', price: 10, drink: true },
+          { name: '鮮奶茶', price: 15, drink: true },
+          { name: '豆漿', price: 0, drink: true },
+        ],
+      },
+    ],
+  },
+  {
     id: 'toast',
     name: '吐司類',
     icon: '🍞',
     items: [
-      { id: 't1', name: '起司蛋吐司', price: 30 },
-      { id: 't2', name: '蔬菜蛋吐司', price: 30 },
-      { id: 't3', name: '豬排蛋吐司', price: 40 },
-      { id: 't4', name: '麥香雞吐司', price: 35 },
-      { id: 't5', name: '鮪魚蛋吐司', price: 40 },
+      { id: 't1', name: '起司蛋吐司', price: 30, opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒', '改半熟', '改全熟'] },
+      { id: 't2', name: '蔬菜蛋吐司', price: 30, opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒', '改半熟', '改全熟'] },
+      {
+        id: 't3',
+        name: '豬排蛋吐司',
+        price: 40,
+        opts: [
+          '❌美生菜',
+          '❌蘋果片',
+          '❌蕃茄醬',
+          '❌胡椒',
+          '改半熟',
+          '改全熟',
+          '起司',
+        ],
+        addons: [
+          { name: '起司', price: 10 },
+        ],
+      },
+      { id: 't4', name: '麥香雞蛋吐司', price: 35, opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒', '改半熟', '改全熟'] },
+      { id: 't5', name: '鮪魚蛋吐司', price: 40, opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒', '改半熟', '改全熟'] },
+      { id: 'x1784602799522', name: '酪梨蛋吐司', price: 30 },
+      { id: 'x1784602846475', name: '酪梨蛋+鮪魚', price: 40 },
+      { id: 'x1785457394045', name: '玉米蛋吐司', price: 30, opts: ['❌美生菜', '❌蘋果片', '❌蕃茄醬', '❌胡椒', '改半熟', '改全熟'] },
+      { id: 'x1785464484713', name: '草莓果醬吐司', price: 30 },
+      { id: 'x1785629904638', name: '夾蛋土司', price: 25 },
     ],
   },
   {
@@ -17,23 +103,14 @@ const MENU = [
     name: '蛋餅類',
     icon: '🥞',
     items: [
-      { id: 'e1', name: '起司蛋餅', price: 30 },
-      { id: 'e2', name: '蔬菜蛋餅', price: 30 },
-      { id: 'e3', name: '豬排蛋餅', price: 40 },
-      { id: 'e4', name: '鮪魚蛋餅', price: 40 },
-      { id: 'e5', name: '黃金泡菜蛋餅', price: 40 },
-    ],
-  },
-  {
-    id: 'drink',
-    name: '飲料類',
-    icon: '🥤',
-    temp: true,
-    items: [
-      { id: 'd1', name: '有糖豆漿', price: 25 },
-      { id: 'd2', name: '紅茶', price: 20 },
-      { id: 'd3', name: '奶茶', price: 30 },
-      { id: 'd4', name: '鮮奶茶', price: 35 },
+      { id: 'e1', name: '起司蛋餅', price: 30, opts: ['❌胡椒', '切'] },
+      { id: 'e2', name: '蔬菜蛋餅', price: 30, opts: ['❌胡椒', '切'] },
+      { id: 'e3', name: '豬排蛋餅', price: 40, opts: ['❌胡椒', '切'] },
+      { id: 'e4', name: '鮪魚蛋餅', price: 40, opts: ['❌胡椒', '切'] },
+      { id: 'e5', name: '黃金泡菜蛋餅（微辣）', price: 40 },
+      { id: 'x1784606807236', name: '香椿抓餅 原味', price: 30, opts: ['❌胡椒', '切'] },
+      { id: 'x1784606893380', name: '香椿抓餅+蛋', price: 35, opts: ['❌胡椒', '切'] },
+      { id: 'x1785457458845', name: '玉米蛋餅', price: 30, opts: ['❌胡椒', '切'] },
     ],
   },
   {
@@ -43,7 +120,31 @@ const MENU = [
     items: [
       { id: 's1', name: '薯條', price: 35 },
       { id: 's2', name: '雞塊', price: 40 },
-      { id: 's3', name: '蘿蔔糕', price: 40 },
+      { id: 's3', name: '👍香菇蘿蔔糕 ❤️價格優惠中（原60）', price: 40 },
+      { id: 'x1784593272400', name: '荷包蛋', price: 15, opts: ['半熟', '全熟'] },
+      { id: 'x1784682320772', name: '限量水煮蛋', price: 15 },
+    ],
+  },
+  {
+    id: 'sandwich',
+    name: '三明治系列',
+    icon: '🥪',
+    items: [
+      { id: 'sw1', name: '三明治（30元）', price: 30 },
+      { id: 'sw2', name: '三明治（40元）', price: 40 },
+      { id: 'sw3', name: '三明治（50元）', price: 50 },
+    ],
+  },
+  {
+    id: 'drink',
+    name: '飲料類',
+    icon: '🥤',
+    temp: true,
+    items: [
+      { id: 'd1', name: '有糖豆漿原價25', price: 20 },
+      { id: 'd2', name: '紅茶', price: 20 },
+      { id: 'd3', name: '奶茶', price: 30 },
+      { id: 'd4', name: '鮮奶茶', price: 35 },
     ],
   },
 ];
