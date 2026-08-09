@@ -186,6 +186,155 @@ function saveOrders(orders) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
 }
 
+// ===== 雲端連線監控：斷線不降級、自動重連 =====
+// 過去只要 onSnapshot 回報一次錯誤，就永久切換成本機模式：之後送出的訂單只會寫進
+// localStorage、再也不會進雲端（廚房完全收不到），畫面也停在斷線那一刻的資料 ——
+// 症狀就是「看起來正常但其實是死的，只能關掉重開」。
+// 現在只要 Firebase 有設定就一直留在雲端模式：斷線只當成暫時狀態，監聽器會自動退避重連，
+// 期間的寫入由 Firestore 自己排隊、連上後補送，並在畫面上告知使用者不必關掉重開。
+const NET = {
+  raw: null,        // 原始 firestore 實例（測試站的包裝層沒有 enableNetwork）
+  online: true,     // 目前拿到的資料是不是來自雲端
+  watchers: [],     // 所有需要自動重連的即時監聽
+  sensor: false,    // 連線感測器是否已啟動
+  hiddenAt: 0,      // 分頁切到背景的時間
+  bound: false,
+  kicking: false,
+  banner: null,
+  timer: null,
+};
+
+// 註冊一個會自動重連的即時監聽。
+// start(ok, fail) 要回傳 onSnapshot 的取消訂閱函式；收到快照時呼叫 ok()，出錯時呼叫 fail(err)。
+function watchCloud(name, start) {
+  const w = { name: name, start: start, unsub: null, retry: 0, timer: null };
+  NET.watchers.push(w);
+  bindNetEvents();
+  openWatcher(w);
+  return w;
+}
+
+function openWatcher(w) {
+  if (w.timer) { clearTimeout(w.timer); w.timer = null; }
+  if (w.unsub) { try { w.unsub(); } catch (e) {} w.unsub = null; }
+  try {
+    w.unsub = w.start(
+      () => { w.retry = 0; },
+      err => {
+        console.warn('雲端監聽中斷，自動重連中：' + w.name, err && err.code);
+        w.unsub = null;
+        setCloudOnline(false);
+        retryWatcher(w);
+      }
+    );
+  } catch (e) {
+    console.warn('雲端監聽啟動失敗：' + w.name, e);
+    w.unsub = null;
+    setCloudOnline(false);
+    retryWatcher(w);
+  }
+}
+
+// 退避重試：1、2、4…最多每 20 秒試一次。網路恢復或回到前景時會立刻重連，不必等這個計時器
+function retryWatcher(w) {
+  if (w.timer) return;
+  const wait = Math.min(20000, 1000 * Math.pow(2, w.retry++));
+  w.timer = setTimeout(() => { w.timer = null; openWatcher(w); }, wait);
+}
+
+// 只重開真的斷掉的監聽：還活著的監聽 Firestore 自己會補資料，重開反而多花一次讀取
+function reopenBrokenWatchers() {
+  NET.watchers.forEach(w => { if (!w.unsub) { w.retry = 0; openWatcher(w); } });
+}
+
+// 連線感測器：訂閱一份最小的文件並開啟中繼資料通知，用 fromCache 判斷「現在看到的是
+// 雲端資料還是本機快取」。獨立成一支的原因是：訂單監聽若開啟中繼資料通知，會為了偵測
+// 連線而在每次連線狀態變動時整頁重畫，反而干擾點餐。
+function startNetSensor(db) {
+  if (NET.sensor || !db) return;
+  NET.sensor = true;
+  watchCloud('連線偵測', (ok, fail) => db.collection('config').doc('admin').onSnapshot(
+    { includeMetadataChanges: true },
+    snap => { ok(); setCloudOnline(!(snap.metadata && snap.metadata.fromCache)); },
+    fail
+  ));
+}
+
+function setCloudOnline(on) {
+  on = !!on;
+  if (NET.online === on) return;
+  NET.online = on;
+  if (NET.timer) { clearTimeout(NET.timer); NET.timer = null; }
+  if (on) { renderNetBanner(); return; }
+  // 剛開頁時第一個快照本來就來自本機快取，等 8 秒還沒連上才提示，避免每次開啟都閃一下
+  NET.timer = setTimeout(() => { NET.timer = null; renderNetBanner(); }, 8000);
+}
+
+// 斷線時在畫面最上方顯示提示。重點是告訴店員／顧客「會自動恢復，不用關掉重開」——
+// 以前沒有任何提示，看到畫面不動就只能重開，反而中斷正在排隊的資料。
+function renderNetBanner() {
+  if (typeof document === 'undefined' || !document.body) return;
+  if (NET.online) {
+    if (NET.banner) { try { NET.banner.remove(); } catch (e) {} NET.banner = null; }
+    return;
+  }
+  if (NET.banner) return;
+  const bar = document.createElement('div');
+  bar.id = 'xyg-net-banner';
+  bar.setAttribute('style', 'position:fixed;left:0;right:0;top:0;z-index:99999;display:flex;'
+    + 'align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;padding:8px 12px;'
+    + 'background:#b3322b;color:#fff;font-size:14px;font-weight:700;line-height:1.4;'
+    + 'text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25);');
+  bar.innerHTML = '<span>⚠️ 目前連不上雲端，畫面是本機暫存；連線恢復會自動同步，<u>不必關掉重開</u></span>'
+    + '<button type="button" style="border:0;border-radius:999px;padding:5px 14px;background:#fff;'
+    + 'color:#b3322b;font-weight:700;font-size:13px;cursor:pointer;">立即重連</button>';
+  bar.querySelector('button').addEventListener('click', kickCloud);
+  document.body.appendChild(bar);
+  NET.banner = bar;
+}
+
+function bindNetEvents() {
+  if (NET.bound) return;
+  NET.bound = true;
+  try {
+    window.addEventListener('online', () => kickCloud());
+    // 從其他頁面「上一頁」回來（bfcache 還原）時，連線通常已經死了
+    window.addEventListener('pageshow', e => { if (e && e.persisted) kickCloud(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') { NET.hiddenAt = Date.now(); return; }
+      const away = NET.hiddenAt ? Date.now() - NET.hiddenAt : 0;
+      NET.hiddenAt = 0;
+      // iOS Safari 與加到主畫面的 App 切到背景久了，系統會把 Firestore 的連線收掉，
+      // 而且不會回報任何錯誤 —— 畫面就這樣停在舊資料（以前只能關掉重開）。
+      // 回到前景時只要離開超過 30 秒，或本來就是斷線狀態，就主動把連線重接一次。
+      if (away > 30000 || !NET.online) kickCloud();
+    });
+  } catch (e) {}
+}
+
+// 重接 Firestore。只呼叫 enableNetwork 沒有用：SDK 以為自己還連著、不會重建連線，
+// 一定要先 disableNetwork 把死掉的連線拆掉。排隊中的寫入不會遺失，連上就會補送。
+function kickCloud() {
+  if (NET.kicking) return;
+  NET.kicking = true;
+  const raw = NET.raw;
+  let settled = false;
+  const done = () => {
+    if (settled) return;
+    settled = true;
+    NET.kicking = false;
+    reopenBrokenWatchers();
+  };
+  setTimeout(done, 8000); // 保險：萬一切換網路的 Promise 沒有回來，也不要卡住下一次重連
+  if (raw && typeof raw.disableNetwork === 'function') {
+    try {
+      raw.disableNetwork().then(() => raw.enableNetwork()).then(done, done);
+      return;
+    } catch (e) {}
+  }
+  done();
+}
+
 // ===== 共用 Firebase 連線 =====
 let _persistEnabled = false;
 function ensureDb() {
@@ -197,13 +346,22 @@ function ensureDb() {
     if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
     const db = firebase.firestore();
     // 離線持久化：把雲端資料快取到 IndexedDB，離線可讀寫、回連自動同步（必須在第一次操作前啟用一次）
+    NET.raw = db; // 供斷線重連用（disableNetwork / enableNetwork）
     if (!_persistEnabled) {
       _persistEnabled = true;
+      try {
+        // IG／LINE／FB 的內建瀏覽器和部分公用 Wi-Fi 會擋掉 Firestore 預設的串流連線
+        //（症狀是一直轉圈或收不到即時更新），偵測到就會自動改走長輪詢。
+        // 目前的 SDK（10.12.2）預設就是開的，這裡明寫是為了日後換版本時不會被預設值改掉。
+        // 必須在任何資料操作之前設定，所以放在 enablePersistence 前面。
+        db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+      } catch (e) { console.warn('Firestore 連線設定略過', e); }
       try {
         db.enablePersistence({ synchronizeTabs: true })
           .catch(e => console.warn('離線持久化未啟用：', e && e.code));
       } catch (e) { console.warn('離線持久化呼叫失敗', e); }
     }
+    startNetSensor(db);
     return db;
   } catch (e) {
     console.warn('Firebase 初始化失敗', e);
@@ -272,27 +430,33 @@ function initSync(onChange, opts) {
   opts = opts || {};
   SYNC.onChange = onChange;
   const db = ensureDb();
-  if (db) {
-    SYNC.db = db;
-    SYNC.mode = 'cloud';
+  if (!db) { startLocalSync(); return; }
+  SYNC.db = db;
+  SYNC.mode = 'cloud';
+  let hadData = false;
+  // 交給 watchCloud 管理：斷線只會重連，不會切成本機模式（切過去就再也不會把訂單送上雲端）
+  watchCloud('訂單', (ok, fail) => {
+    // 每次重新訂閱都重算今天的起點，跨過午夜重連才不會停在昨天的範圍
     let query = db.collection('orders').orderBy('createdAt', 'asc');
     if (opts.today) {
       query = db.collection('orders').where('createdAt', '>=', startOfToday()).orderBy('createdAt', 'asc');
     }
-    query.onSnapshot(
+    return query.onSnapshot(
       snap => {
+        ok();
+        hadData = true;
         const list = snap.docs.map(doc => Object.assign({ id: doc.id }, doc.data()));
         backupOrders(list, !!opts.today);
         if (SYNC.onChange) SYNC.onChange(list);
       },
       err => {
-        console.warn('雲端同步中斷，改用本機模式', err);
-        startLocalSync();
+        fail(err);
+        // 還沒拿到任何雲端資料就斷線 → 先用本機備份把畫面撐住，但不切換成本機模式：
+        // 送出的訂單仍然交給 Firestore 排隊，連上後會自動補送到廚房。
+        if (!hadData && SYNC.onChange) SYNC.onChange(loadOrders());
       }
     );
-    return;
-  }
-  startLocalSync();
+  });
 }
 
 // 把雲端訂單留一份在 localStorage 當離線備援。
@@ -364,7 +528,8 @@ function syncClearOrders(opts) {
 }
 
 function syncModeLabel() {
-  return SYNC.mode === 'cloud' ? '☁️ 雲端即時同步' : '🔄 本機儲存';
+  if (SYNC.mode !== 'cloud') return '🔄 本機儲存';
+  return NET.online ? '☁️ 雲端即時同步' : '⚠️ 連線中斷，自動重連中';
 }
 
 // ===== 營運設定同步層：菜單 + 員工/食材/設備/成本（Firestore doc config/admin，localStorage 備援）=====
@@ -522,11 +687,12 @@ function syncAnnouncementUI() {
 function initConfig(onChange) {
   CONFIG.onChange = onChange;
   const db = ensureDb();
-  if (db) {
-    CONFIG.db = db;
-    CONFIG.mode = 'cloud';
-    db.collection('config').doc('admin').onSnapshot(
+  if (!db) { startLocalConfig(); return; }
+  CONFIG.db = db;
+  CONFIG.mode = 'cloud';
+  watchCloud('營運設定', (ok, fail) => db.collection('config').doc('admin').onSnapshot(
       snap => {
+        ok();
         let d = snap.exists ? snap.data() : null;
         if (!d) {
           // 啟用離線持久化後，開頁的第一個快照是從本機快取來的；快取是空的時候
@@ -548,27 +714,32 @@ function initConfig(onChange) {
         CONFIG._lastJson = json;
         if (CONFIG.onChange) CONFIG.onChange(d);
       },
-      err => { console.warn('設定同步中斷，改用本機', err); startLocalConfig(); }
-    );
-    return;
-  }
-  startLocalConfig();
+      err => {
+        fail(err);
+        // 尚未載入過雲端設定就斷線 → 用本機備份把菜單顯示出來，但不標記為「已載入」：
+        // CONFIG.loaded 維持 false，後台此時存檔會被擋下，不會把舊的本機設定蓋回雲端。
+        if (!CONFIG.loaded) applyConfigLocally();
+      }
+    ));
+}
+
+// 用本機備份的設定把畫面撐起來。不動 CONFIG.mode、也不標記已載入，
+// 所以雲端斷線時後台仍然存不了檔（避免拿舊的本機設定覆蓋雲端）。
+function applyConfigLocally() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(CONFIG_LS) || 'null'); } catch (e) {}
+  d = normalizeConfig(d);
+  CONFIG.data = d;
+  CURRENT_MENU = d.menu;
+  const json = JSON.stringify(d);
+  if (json === CONFIG._lastJson) return; // 設定沒變就不重畫
+  CONFIG._lastJson = json;
+  if (CONFIG.onChange) CONFIG.onChange(d);
 }
 
 function startLocalConfig() {
   CONFIG.mode = 'local';
-  const tick = () => {
-    let d = null;
-    try { d = JSON.parse(localStorage.getItem(CONFIG_LS) || 'null'); } catch (e) {}
-    d = normalizeConfig(d);
-    CONFIG.data = d;
-    CONFIG.loaded = true;
-    CURRENT_MENU = d.menu;
-    const json = JSON.stringify(d);
-    if (json === CONFIG._lastJson) return; // 設定沒變就不重畫
-    CONFIG._lastJson = json;
-    if (CONFIG.onChange) CONFIG.onChange(d);
-  };
+  const tick = () => { CONFIG.loaded = true; applyConfigLocally(); };
   tick();
   if (CONFIG.pollTimer) clearInterval(CONFIG.pollTimer);
   CONFIG.pollTimer = setInterval(tick, 3000);
@@ -626,15 +797,20 @@ async function nextDailyNo() {
   const db = ensureDb();
   if (!db) return null;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return null; // 離線直接退回備援，避免交易卡住
+  if (!NET.online) return null; // 連得上網路不代表連得上雲端（navigator.onLine 常常還是 true）
   try {
     const ref = db.collection('config').doc('counter-' + todayKey());
-    const seq = await db.runTransaction(async tx => {
+    const run = db.runTransaction(async tx => {
       const snap = await tx.get(ref);
       const cur = (snap.exists && snap.data() && snap.data().seq) ? snap.data().seq : 0;
       const next = cur + 1;
       tx.set(ref, { seq: next }, { merge: true });
       return next;
     });
+    // 交易一定要連得上伺服器才會完成，網路半死時會一直等下去，送出鍵就這樣卡住。
+    // 超過 6 秒就改用裝置前綴的備援號碼（該筆交易若之後才成功，只是跳過一個號碼）。
+    const seq = await Promise.race([run, new Promise(r => setTimeout(() => r(null), 6000))]);
+    if (seq === null) { console.warn('取號逾時，改用裝置前綴'); return null; }
     return String(seq).padStart(2, '0');
   } catch (e) {
     console.warn('取號交易失敗，改用裝置前綴', e);

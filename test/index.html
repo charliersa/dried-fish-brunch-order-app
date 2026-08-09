@@ -1181,6 +1181,17 @@
       if (!/^09\d{8}$/.test(phone)) { showMessage('請填正確手機號碼（09 開頭共 10 碼）'); return; }
       if (state.diningType === '外帶' && !state.tableInfo.trim()) { showMessage('外帶請填取餐名稱'); return; }
       state.submitting = true;
+      // 不論成功、失敗還是中途丟出例外，離開前一定要把送出鍵解鎖。
+      // 以前少了這一步：只要下面的取號卡住（網路半死時交易會一直等），
+      // submitting 就永遠是 true，送出鍵從此沒反應，顧客只能關掉重開。
+      try {
+        await submitOrderInner(phone);
+      } finally {
+        state.submitting = false;
+      }
+    }
+
+    async function submitOrderInner(phone) {
       // 在「送出」手勢中先要求通知權限（餐點完成才推播得到）
       try { if ('Notification' in window && Notification.permission === 'default' && typeof PUSH_CONFIG !== 'undefined' && PUSH_CONFIG.vapidKey && PUSH_CONFIG.vapidKey.indexOf('PASTE') === -1) Notification.requestPermission(); } catch (e) {}
       // 全店唯一取餐號（線上交易取號，保證不撞；失敗退回裝置前綴）

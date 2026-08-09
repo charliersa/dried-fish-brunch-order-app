@@ -139,7 +139,7 @@
     wrap.innerHTML =
       '<div class="card">' +
       '<h3>' + (isInApp ? '請用瀏覽器開啟才能安裝' : '把「' + appName() + '」放到主畫面') + '</h3>' +
-      '<p>' + (isInApp ? 'LINE／FB 內建瀏覽器無法安裝 App。' : NOTE) + '</p>' +
+      '<p>' + (isInApp ? 'IG／LINE／FB 內建瀏覽器無法安裝 App。' : NOTE) + '</p>' +
       steps +
       '<button type="button" class="close">知道了</button>' +
       '</div>';
