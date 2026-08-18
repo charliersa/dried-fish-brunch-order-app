@@ -482,7 +482,10 @@ function startLocalSync() {
 
 function syncAddOrder(order) {
   if (SYNC.mode === 'cloud' && SYNC.db) {
-    return SYNC.db.collection('orders').doc(String(order.id)).set(order)
+    // sentAt 由伺服器蓋章：手機時鐘不準時，watchOrderAck 會用它校正 createdAt
+    const doc = Object.assign({}, order);
+    try { doc.sentAt = firebase.firestore.FieldValue.serverTimestamp(); } catch (e) {}
+    return SYNC.db.collection('orders').doc(String(order.id)).set(doc)
       .catch(e => console.warn('新增訂單失敗', e));
   }
   const orders = loadOrders();
@@ -502,6 +505,84 @@ function syncUpdateOrder(id, changes) {
   if (order) { Object.assign(order, changes); saveOrders(orders); }
   if (SYNC.onChange) SYNC.onChange(orders);
   return Promise.resolve();
+}
+
+// ===== 訂單送達確認（顧客端「店家已接收」用）=====
+// Firestore 離線也會回報「寫入成功」（先排進本機佇列、回連才補送），所以「送出」不等於店家收到。
+// 曾發生顧客看到「訂單已送出」但訂單卡在手機裡，店家完全沒收到的案例（08/12 兩筆、08/13 一筆）。
+// 這裡監看單筆訂單的中繼資料：hasPendingWrites 變 false 才代表伺服器真的收下了。
+// cb('pending', data) = 還在本機排隊；cb('sent', data) = 伺服器已確認（之後自動停止監看）。
+// 回傳停止函式。
+function watchOrderAck(orderId, cb) {
+  const db = SYNC.db || ensureDb();
+  if (!db || typeof db.collection !== 'function') { cb('sent', null); return function () {}; } // 單機模式沒有雲端可等
+  let stopped = false, unsub = null, timer = null;
+
+  function stop() {
+    stopped = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (unsub) { try { unsub(); } catch (e) {} unsub = null; }
+  }
+
+  // 手機時鐘不準會讓 createdAt 偏差（實際看過快 26 分鐘的）。偏差太大時，廚房的「今日」
+  // 查詢可能漏單、排序也會錯亂 —— 送達確認後以伺服器蓋章的 sentAt 為準校正一次。
+  function fixClockSkew(data) {
+    try {
+      if (!data || !data.sentAt || !data.sentAt.toMillis || !data.createdAt) return;
+      const skew = data.sentAt.toMillis() - data.createdAt;
+      if (Math.abs(skew) <= 10 * 60 * 1000) return;
+      db.collection('orders').doc(String(orderId)).update({ createdAt: data.sentAt.toMillis() }).catch(() => {});
+    } catch (e) {}
+  }
+
+  function open() {
+    if (stopped) return;
+    try {
+      unsub = db.collection('orders').doc(String(orderId)).onSnapshot(
+        { includeMetadataChanges: true },
+        snap => {
+          if (stopped) return;
+          if (snap.exists && !snap.metadata.hasPendingWrites) {
+            const data = snap.data();
+            fixClockSkew(data);
+            cb('sent', data);
+            stop();
+          } else {
+            cb('pending', snap.exists ? snap.data() : null);
+          }
+        },
+        () => {
+          // 監聽中斷：訂單仍在本機排隊，稍後重開監聽（寫入本身由 Firestore 排隊補送，不會遺失）
+          if (stopped) return;
+          cb('pending', null);
+          unsub = null;
+          timer = setTimeout(open, 3000);
+        }
+      );
+    } catch (e) {
+      timer = setTimeout(open, 3000);
+    }
+  }
+
+  open();
+  return stop;
+}
+
+// ===== 螢幕保持喚醒（店內接單裝置用）=====
+// iPad 自動鎖屏後 iOS 會無聲切斷 Firestore 連線：新單進來不響也不顯示，要等有人喚醒螢幕。
+// Wake Lock 讓這個頁面開在前景時螢幕不自動鎖定；切到背景鎖會被系統釋放，回前景要重新取得。
+function keepScreenAwake() {
+  if (!navigator.wakeLock || !navigator.wakeLock.request) return; // 舊系統不支援：請改用 iPad 設定「永不自動鎖定」
+  let lock = null;
+  const acquire = () => {
+    navigator.wakeLock.request('screen')
+      .then(l => { lock = l; })
+      .catch(() => {}); // 低電量模式等情況會被拒絕，失敗就算了
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && (!lock || lock.released)) acquire();
+  });
+  acquire();
 }
 
 // opts.todayOnly = true → 只清除今天的訂單（保留歷史，報表不受影響）
