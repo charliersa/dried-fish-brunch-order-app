@@ -357,8 +357,12 @@ function ensureDb() {
         db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
       } catch (e) { console.warn('Firestore 連線設定略過', e); }
       try {
-        db.enablePersistence({ synchronizeTabs: true })
-          .catch(e => console.warn('離線持久化未啟用：', e && e.code));
+        // 單分頁持久化：兩個站同在 charliersa.github.io，先前的 synchronizeTabs 會讓廚房／
+        // 收銀／點餐所有分頁共選一個「主分頁」統一連線；Safari 把主分頁凍結（背景分頁、
+        // 鎖屏）後，其他分頁就只剩本機快取——畫面卡在「連不上雲端」，重連也救不回來。
+        // 改成每個分頁各自連線：第一個分頁擁有離線快取，其餘分頁照常即時同步（只是沒離線快取）。
+        db.enablePersistence()
+          .catch(e => console.warn('離線持久化未啟用（此分頁改用即時連線）：', e && e.code));
       } catch (e) { console.warn('離線持久化呼叫失敗', e); }
     }
     startNetSensor(db);
