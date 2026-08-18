@@ -471,6 +471,7 @@
       addonOpt: {},        // addonId -> 已選規格 id
       currentOrderId: null,
       submitting: false,
+      ack: null,           // 訂單送達狀態：null=未知 / 'pending'=傳送中 / 'stuck'=逾時未達 / 'sent'=店家已接收
       showBoard: false,
       justPickedId: '',
     };
@@ -848,12 +849,13 @@
         <div>
           <div style="background:${isReady ? 'linear-gradient(135deg,#3fb27f,#2c8f62)' : '#fff'};border-radius:22px;padding:24px;box-shadow:0 4px 14px rgba(28,94,122,.1);text-align:center;${isReady ? 'color:#fff;' : ''}">
             <div style="font-size:46px;">${order.picked ? '✅' : (isReady ? '🎉' : '🐟')}</div>
-            <h2 style="margin:6px 0 2px;font-weight:900;${isReady ? 'font-size:26px;' : ''}">${order.picked ? '已完成取餐' : (isReady ? '可以取餐囉！' : '訂單已送出！')}</h2>
+            <h2 style="margin:6px 0 2px;font-weight:900;${isReady ? 'font-size:26px;' : ''}">${order.picked ? '已完成取餐' : (isReady ? '可以取餐囉！' : (state.ack === 'pending' || state.ack === 'stuck' ? '訂單傳送中…' : '訂單已送出！'))}</h2>
             <div style="font-size:14px;${isReady ? 'color:rgba(255,255,255,.9);' : 'color:var(--ink-soft);'}">${isReady ? '請憑此號碼到櫃台取餐' : '取餐號碼'}</div>
             <div style="font-size:${isReady ? '58px' : '40px'};font-weight:900;color:${isReady ? '#fff' : 'var(--pink)'};letter-spacing:2px;line-height:1.1;">${order.no}</div>
             <div style="display:flex;align-items:center;gap:4px;margin:18px 4px 8px;flex-wrap:wrap;justify-content:center;">${stepHtml}</div>
             <div style="font-size:13px;margin-top:6px;${isReady ? 'color:#fff;font-weight:800;' : 'color:var(--ink-soft);'}">${order.picked ? '✅ 已完成取餐，謝謝惠顧！' : (isReady ? '🍽️ 餐點好囉！請到櫃台取餐' : '畫面會自動更新，請留意叫號')}</div>
           </div>
+          ${(!isReady && !order.picked) ? renderAckNotice() : ''}
           ${(!isReady && !order.picked) ? renderPickupNotice(order) : ''}
           <div style="background:#fff;border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 2px 6px rgba(28,94,122,.07);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -1170,6 +1172,62 @@
       } catch (e) {}
     }
 
+    // ===== 訂單送達確認 =====
+    // 「送出」只代表寫進手機的排隊佇列，不代表店家收到（訊號差時會卡在手機裡）。
+    // 這裡等伺服器真正確認才把畫面切成「店家已接收 ✓」，並且改成確認後才通知店裡響鈴 ——
+    // 以前是送出當下就打通知，訊號差時通知發不出去、訂單也還沒到，店裡什麼都不知道。
+    let _ackStop = null, _ackTimer = null;
+    function startAckWatch(orderId, fresh) {
+      if (_ackStop) { try { _ackStop(); } catch (e) {} _ackStop = null; }
+      if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+      state.ack = 'pending';
+      let sawPending = false;
+      // 8 秒還沒送達 → 升級成紅色警告，提醒顧客先別關頁、別鎖螢幕
+      _ackTimer = setTimeout(() => {
+        if (state.ack === 'pending') { state.ack = 'stuck'; renderCustomer(); }
+      }, 8000);
+      _ackStop = watchOrderAck(orderId, (st, data) => {
+        if (st !== 'sent') { sawPending = true; return; }
+        if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+        const changed = state.ack !== 'sent';
+        state.ack = 'sent';
+        // 只在「這次送出」或「親眼看到從排隊變送達」時響店裡的鈴：
+        // 重開頁面看到早已送達的舊單不再重複吵店家
+        if ((fresh || sawPending) && data) notifyBackendOnce(orderId, data);
+        if (changed) renderCustomer();
+      });
+    }
+    function stopAckWatch() {
+      if (_ackStop) { try { _ackStop(); } catch (e) {} _ackStop = null; }
+      if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+      state.ack = null;
+    }
+    // 同一張單只通知店裡一次（防重開頁面重複推播）
+    function notifyBackendOnce(orderId, order) {
+      try { if (localStorage.getItem('xyg-bknotif') === orderId) return; } catch (e) {}
+      if (order.status && order.status !== 'new') return; // 店家已在處理，不必再響
+      notifyBackend(order);
+      try { localStorage.setItem('xyg-bknotif', orderId); } catch (e) {}
+    }
+    // 訂單狀態頁最上方的送達狀態條
+    function renderAckNotice() {
+      const box = (bg, line, ink, html) =>
+        `<div style="background:${bg};border:1.5px solid ${line};border-radius:14px;padding:12px 14px;margin-top:12px;text-align:center;color:${ink};font-weight:800;font-size:14px;line-height:1.5;">${html}</div>`;
+      switch (state.ack) {
+        case 'pending':
+          return box('#fff8e6', '#f0b64b', '#a86a12', '📤 訂單傳送中…請先別關閉此頁');
+        case 'stuck':
+          return box('#fdeceb', '#d9534f', '#b3322b',
+            '⚠️ 訊號不佳，訂單還沒傳到店家！<br>'
+            + '<span style="font-weight:500;font-size:13px;">請不要關閉此頁、先別鎖螢幕，連上網路會自動送出。'
+            + '若一直卡住，請換個位置收訊好一點再試，或直接向店家出示此畫面。</span>');
+        case 'sent':
+          return box('#e6f6ee', '#54b98a', '#217a55', '✅ 店家已收到訂單');
+        default:
+          return '';
+      }
+    }
+
     async function submitOrder() {
       if (state.submitting) return; // 防連點：避免一次送出產生重複訂單
       if (cartCount() === 0) {
@@ -1218,12 +1276,13 @@
       orders = orders.concat([order]); // 樂觀更新，雲端快照回來後會自動校正
       syncAddOrder(order);
       ensureOrderPush(order); // 取得推播 token 存進訂單（完成時才推播得到）
-      notifyBackend(order); // 通知後端有新訂單（關網頁也會響）
       state.currentOrderId = order.id;
       try { localStorage.setItem('xyg-cust-active', order.id); } catch (e) {} // 一機一單：記住進行中訂單
       state.cart = [];
       state.cartOpen = false;
-      showMessage('訂單已送出');
+      // 店裡的響鈴通知改由 startAckWatch 在「伺服器確認收到」後才發（見 notifyBackendOnce）
+      startAckWatch(order.id, true);
+      showMessage('訂單送出中…');
       renderCustomer();
     }
 
@@ -1239,6 +1298,12 @@
 
     // 一機一單：若本機有進行中的訂單，重開仍回到該訂單狀態頁（避免同一支手機重複下單）
     try { state.currentOrderId = localStorage.getItem('xyg-cust-active') || null; } catch (e) {}
+    // 重開頁面也要繼續確認送達：訂單若上次卡在手機裡，這次連上時會補送並通知店裡響鈴
+    if (state.currentOrderId) startAckWatch(state.currentOrderId, false);
+    // 訂單還沒送達店家就要關頁 → 跳出瀏覽器的確認視窗擋一下
+    window.addEventListener('beforeunload', e => {
+      if (state.ack === 'pending' || state.ack === 'stuck') { e.preventDefault(); e.returnValue = ''; }
+    });
 
     renderCustomer();
     initSync(list => {
@@ -1246,7 +1311,11 @@
       // 進行中的訂單若已被清掉（例如隔日清除），自動解鎖回到點餐
       if (state.currentOrderId && !orders.some(o => o.id === state.currentOrderId)) {
         const stillCaching = list.length === 0;
-        if (!stillCaching) { state.currentOrderId = null; try { localStorage.removeItem('xyg-cust-active'); } catch (e) {} }
+        if (!stillCaching) {
+          state.currentOrderId = null;
+          stopAckWatch(); // 訂單已被清掉，送達監看跟著收掉
+          try { localStorage.removeItem('xyg-cust-active'); } catch (e) {}
+        }
       }
       checkMyOrderReady(list); // 餐點完成 → 響鈴通知顧客
       // 雲端任何變動都即時重畫（號碼變色/文字改變/消失都會跟著動）；已保留焦點與捲動位置避免干擾點餐
