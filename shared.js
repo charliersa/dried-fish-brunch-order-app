@@ -350,11 +350,11 @@ function ensureDb() {
     if (!_persistEnabled) {
       _persistEnabled = true;
       try {
-        // IG／LINE／FB 的內建瀏覽器和部分公用 Wi-Fi 會擋掉 Firestore 預設的串流連線
-        //（症狀是一直轉圈或收不到即時更新），偵測到就會自動改走長輪詢。
-        // 目前的 SDK（10.12.2）預設就是開的，這裡明寫是為了日後換版本時不會被預設值改掉。
-        // 必須在任何資料操作之前設定，所以放在 enablePersistence 前面。
-        db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+        // 顧客手機的網路環境（弱訊號、IG/LINE 內建瀏覽器、公用 Wi-Fi）常讓 Firestore
+        // 預設的串流連線半死不活：08/28 上午 06–13 共 8 筆訂單就是寫入通道卡死而蒸發。
+        // 「自動偵測」偵測不到半死狀態，改成強制走長輪詢：每次通訊都是一般 HTTP 請求,
+        // 凍不死、也不會整條卡住，代價只是多零點幾秒。必須在任何資料操作之前設定。
+        db.settings({ experimentalForceLongPolling: true, merge: true });
       } catch (e) { console.warn('Firestore 連線設定略過', e); }
       try {
         // 單分頁持久化：兩個站同在 charliersa.github.io，先前的 synchronizeTabs 會讓廚房／
