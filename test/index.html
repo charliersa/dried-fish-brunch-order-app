@@ -1179,13 +1179,15 @@
       if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
       state.ack = 'pending';
       let sawPending = false;
-      // 8 秒還沒送達 → 升級成紅色警告，提醒顧客先別關頁、別鎖螢幕
+      // 8 秒還沒送達 → 升級成紅色警告，並改走備用通道把這張單直接重送到伺服器
       _ackTimer = setTimeout(() => {
         if (state.ack === 'pending') { state.ack = 'stuck'; renderCustomer(); }
+        attemptRescue(orderId);
       }, 8000);
       _ackStop = watchOrderAck(orderId, (st, data) => {
         if (st !== 'sent') { sawPending = true; return; }
         if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+        stopRescue();
         const changed = state.ack !== 'sent';
         state.ack = 'sent';
         // 只在「這次送出」或「親眼看到從排隊變送達」時響店裡的鈴：
@@ -1197,7 +1199,70 @@
     function stopAckWatch() {
       if (_ackStop) { try { _ackStop(); } catch (e) {} _ackStop = null; }
       if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+      stopRescue();
       state.ack = null;
+    }
+    // ===== 卡單救援：改走 REST 直連通道重送 =====
+    // 取號（交易）與訂單本體（寫入佇列）走不同通道：佇列一卡死，號碼取得到、訂單卻永遠出不去
+    // （08/28 上午 06–13 共 8 個號碼就是這樣蒸發的）。
+    // 卡住時改用 Firestore REST API 把「同一份訂單、同一個文件 id」直接寫上伺服器：
+    // HTTP 有回應＝伺服器真的收到；之後佇列若復活補送，也只是同內容原樣覆蓋，不會出現重複單。
+    let _rescueTimer = null, _rescueBusy = false;
+    function stopRescue() {
+      if (_rescueTimer) { clearTimeout(_rescueTimer); _rescueTimer = null; }
+    }
+    async function attemptRescue(orderId) {
+      if (state.ack === 'sent' || state.currentOrderId !== orderId || _rescueBusy) return;
+      const order = orders.find(o => o.id === orderId) || loadOrders().find(o => o.id === orderId);
+      if (!order) return;
+      _rescueBusy = true;
+      try {
+        await restPutOrder(order);
+        // HTTP 成功回應 = 伺服器已收到這張單，直接視同送達
+        if (_ackTimer) { clearTimeout(_ackTimer); _ackTimer = null; }
+        stopRescue();
+        const changed = state.ack !== 'sent';
+        state.ack = 'sent';
+        notifyBackendOnce(orderId, order); // 這張單此刻才真正到店，照樣通知店裡響鈴（內有防重複）
+        if (changed) renderCustomer();
+      } catch (e) {
+        stopRescue();
+        _rescueTimer = setTimeout(() => { attemptRescue(orderId); }, 6000); // 失敗 6 秒後再試，SDK 佇列照常排隊
+      } finally {
+        _rescueBusy = false;
+      }
+    }
+    // 訂單轉成 Firestore REST 格式後寫入（PATCH 同文件 id：不存在就建立，存在就原樣覆蓋）
+    function restPutOrder(order) {
+      const col = (typeof IS_TEST_SITE !== 'undefined' && IS_TEST_SITE ? TEST_PREFIX : '') + 'orders';
+      const url = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_CONFIG.projectId
+        + '/databases/(default)/documents/' + col + '/' + encodeURIComponent(String(order.id))
+        + '?key=' + FIREBASE_CONFIG.apiKey;
+      const clean = Object.assign({}, order);
+      delete clean._pending; delete clean._localOnly; // 即時連線旗標不進雲端
+      return fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: restFields(clean) }),
+      }).then(res => { if (!res.ok) throw new Error('REST ' + res.status); });
+    }
+    function restFields(obj) {
+      const out = {};
+      Object.keys(obj).forEach(k => {
+        const v = restValue(obj[k]);
+        if (v) out[k] = v;
+      });
+      return out;
+    }
+    function restValue(v) {
+      if (v === undefined) return null; // undefined 欄位直接略過
+      if (v === null) return { nullValue: null };
+      if (typeof v === 'boolean') return { booleanValue: v };
+      if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+      if (typeof v === 'string') return { stringValue: v };
+      if (Array.isArray(v)) return { arrayValue: { values: v.map(restValue).filter(Boolean) } };
+      if (typeof v === 'object') return { mapValue: { fields: restFields(v) } };
+      return null;
     }
     // 同一張單只通知店裡一次（防重開頁面重複推播）
     function notifyBackendOnce(orderId, order) {
@@ -1216,8 +1281,8 @@
         case 'stuck':
           return box('#fdeceb', '#d9534f', '#b3322b',
             '⚠️ 訊號不佳，訂單還沒傳到店家！<br>'
-            + '<span style="font-weight:500;font-size:13px;">請不要關閉此頁、先別鎖螢幕，連上網路會自動送出。'
-            + '若一直卡住，請換個位置收訊好一點再試，或直接向店家出示此畫面。</span>');
+            + '<span style="font-weight:500;font-size:13px;">請不要關閉此頁、先別鎖螢幕，系統正在自動重送。'
+            + '若一直卡住，請換個位置收訊好一點，或直接向店家出示此畫面。</span>');
         case 'sent':
           return box('#e6f6ee', '#54b98a', '#217a55', '✅ 店家已收到訂單');
         default:
