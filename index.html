@@ -1264,6 +1264,47 @@
       if (typeof v === 'object') return { mapValue: { fields: restFields(v) } };
       return null;
     }
+    // Firestore REST 格式 → 一般物件（restValue 的反向，等餐輪詢用）
+    function restParseValue(v) {
+      if (!v) return null;
+      if ('nullValue' in v) return null;
+      if ('booleanValue' in v) return v.booleanValue;
+      if ('integerValue' in v) return Number(v.integerValue);
+      if ('doubleValue' in v) return v.doubleValue;
+      if ('stringValue' in v) return v.stringValue;
+      if (v.timestampValue) { const t = new Date(v.timestampValue).getTime(); return isNaN(t) ? null : t; }
+      if (v.arrayValue) return (v.arrayValue.values || []).map(restParseValue);
+      if (v.mapValue) return restParseFields(v.mapValue.fields || {});
+      return null;
+    }
+    function restParseFields(fields) {
+      const out = {};
+      Object.keys(fields || {}).forEach(k => { out[k] = restParseValue(fields[k]); });
+      return out;
+    }
+    // ===== 等餐保底輪詢 =====
+    // 「可以取餐」的通知原本只靠即時連線送到；手機的連線打瞌睡時會延遲很久。
+    // 等餐畫面開著時，每 6 秒改用 REST 直連查一次自己這張單，
+    // 連線再怎麼睡，廚房按「通知取餐」後最慢 6 秒手機一定響。
+    setInterval(async () => {
+      const id = state.currentOrderId;
+      if (!id || document.hidden) return;
+      const cur = orders.find(o => o.id === id);
+      if (cur && (cur.picked || cur.rejected)) return; // 已取餐/已拒單就不用再查
+      try {
+        const res = await fetch('https://firestore.googleapis.com/v1/projects/' + FIREBASE_CONFIG.projectId
+          + '/databases/(default)/documents/orders/' + encodeURIComponent(String(id)) + '?key=' + FIREBASE_CONFIG.apiKey);
+        if (!res.ok) return; // 404 = 還在傳送中（救援機制會處理），其他錯誤下一輪再試
+        const doc = await res.json();
+        if (!doc || !doc.fields) return;
+        const fresh = restParseFields(doc.fields);
+        fresh.id = String(id);
+        const idx = orders.findIndex(o => o.id === id);
+        if (idx >= 0) orders[idx] = Object.assign({}, orders[idx], fresh); else orders = orders.concat([fresh]);
+        checkMyOrderReady(orders); // notified 剛變 true 就會響鈴＋跳到可取餐畫面
+        if (state.currentOrderId || state.showBoard) renderCustomer();
+      } catch (e) {}
+    }, 6000);
     // 同一張單只通知店裡一次（防重開頁面重複推播）
     function notifyBackendOnce(orderId, order) {
       try { if (localStorage.getItem('xyg-bknotif') === orderId) return; } catch (e) {}
