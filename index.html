@@ -620,6 +620,7 @@
 
       app.innerHTML = `
         ${addonSection}
+        ${_installRow()}
         <button class="button-primary" data-action="toggle-board" style="width:100%;justify-content:center;margin-bottom:12px;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:800;">📺 ${state.showBoard ? '收起叫號板' : '查看叫號板（看可取餐號碼）'}</button>
         ${state.showBoard ? renderCallBoard(null) : ''}
         <div class="toggle-row">
@@ -926,6 +927,17 @@
       if (phoneInput) phoneInput.addEventListener('input', onPhoneInput('phone'));
     }
 
+    // ===== 加入主畫面按鈕（附加商品旁）=====
+    // iPhone 的網頁收不到推播是 Apple 規定，加入主畫面後才有通知資格；
+    // Android 則可直接跳系統安裝視窗。已經是 App 模式（主畫面開啟）就不顯示。
+    let _installPrompt = null;
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _installPrompt = e; });
+    function _installRow() {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      if (standalone) return '';
+      return `<button class="button-primary" data-action="add-home" style="width:100%;justify-content:center;margin-bottom:12px;background:#fff;color:var(--ink-soft);border:2px dashed var(--line);font-weight:800;">📲 加入主畫面 — 餐點好了鎖屏也會通知你</button>`;
+    }
+
     function handleAction(event) {
       const btn = event.currentTarget;
       const action = btn.dataset.action;
@@ -1065,6 +1077,16 @@
           if (Notification.permission === 'granted') showMessage('🔔 已開啟，餐點好了會通知你');
           else if (Notification.permission === 'denied') showMessage('通知被封鎖了，請到瀏覽器設定開啟');
         });
+      } else if (action === 'add-home') {
+        if (_installPrompt) {
+          // Android：直接跳系統的安裝視窗
+          const p = _installPrompt; _installPrompt = null;
+          p.prompt();
+        } else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+          alert('把點餐加入主畫面（餐點好了鎖屏也會通知你）：\n\n1. 點 Safari 下方的「分享」按鈕（方框加向上箭頭）\n2. 往下捲，點「加入主畫面」\n3. 右上角按「加入」\n\n之後從主畫面的「小魚乾點餐」圖示進來點餐即可。');
+        } else {
+          alert('把點餐加入主畫面：\n\n1. 點瀏覽器右上角「⋮」選單\n2. 選「安裝應用程式」或「加到主畫面」\n\n之後從主畫面圖示進來點餐即可。');
+        }
       } else if (action === 'home') {
         const o = orders.find(x => x.id === state.currentOrderId);
         const inProgress = o && o.status !== 'done' && !o.picked;
