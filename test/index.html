@@ -592,6 +592,13 @@
         }
       }
 
+      // 結單時間（後台「營業設定」的結單時間＋啟用開關，隨 config/admin 同步下來）
+      const closed = isOrderingClosed();
+      const closedBanner = closed ? `
+        <div style="background:#fdecea;border:1.5px solid #e5534b;color:#b3322b;border-radius:14px;padding:12px 14px;margin-bottom:12px;font-weight:700;text-align:center;">
+          🕛 今日已結單（${escapeHtml(getCloseTime())} 後停止點餐），感謝您的光臨！
+        </div>` : '';
+
       const cats = visibleCategories();
       const catBar = `
         <div class="cat-bar">
@@ -619,6 +626,7 @@
       const scrollY = window.scrollY;
 
       app.innerHTML = `
+        ${closedBanner}
         ${addonSection}
         <button class="button-primary" data-action="toggle-board" style="width:100%;justify-content:center;margin-bottom:12px;background:#fff;color:var(--pink-deep);border:2px solid var(--pink);font-weight:800;">📺 ${state.showBoard ? '收起叫號板' : '查看叫號板（看可取餐號碼）'}</button>
         ${state.showBoard ? renderCallBoard(null) : ''}
@@ -797,7 +805,9 @@
             <input id="phone-input" type="tel" inputmode="numeric" maxlength="10" class="input-group" placeholder="手機（必填，例：0912345678）" value="${escapeHtml(state.phone)}">
             <input id="table-input" class="input-group" placeholder="${state.diningType === '內用' ? '桌號（例：3號桌）' : '取餐名稱（必填，例：小美）'}" value="${escapeHtml(state.tableInfo)}" style="margin-top:8px;">
             <input id="note-input" class="input-group" placeholder="整單備註（例：餐具、不附吸管）" value="${escapeHtml(state.note)}" style="margin-top:8px;">
-            <button class="button-submit" data-action="submit-order">🔔 送出訂單 · $${cartTotal()}</button>
+            ${isOrderingClosed()
+              ? `<button class="button-submit" disabled style="opacity:.5;cursor:not-allowed;">🕛 今日已結單（${escapeHtml(getCloseTime())} 後停止點餐）</button>`
+              : `<button class="button-submit" data-action="submit-order">🔔 送出訂單 · $${cartTotal()}</button>`}
           </div>
         </div>
       `;
@@ -1296,6 +1306,13 @@
         showMessage('請先加入餐點');
         return;
       }
+      // 過了後台設定的結單時間就不再接單（畫面若停在結單前的舊版，這裡是最後一道關）
+      if (isOrderingClosed()) {
+        showMessage('今日已結單（' + getCloseTime() + ' 後停止點餐），請洽櫃台');
+        state.cartOpen = false;
+        renderCustomer();
+        return;
+      }
       const phone = (state.phone || '').trim();
       // 必填手機（每張單綁一支手機作為身份）；外帶另需取餐名稱
       if (!/^09\d{8}$/.test(phone)) { showMessage('請填正確手機號碼（09 開頭共 10 碼）'); return; }
@@ -1387,6 +1404,16 @@
       syncAnnouncementUI(); // 公告按鈕在標題列，跟點餐畫面分開更新
       if (!state.currentOrderId) renderCustomer();
     });
+
+    // 顧客可能在結單時間前就開著頁面：每 20 秒比對一次，跨過結單時間就自動把畫面切成「已結單」。
+    // （renderCustomer 會保留焦點與捲動位置，所以不會打斷正在打字的客人）
+    let _wasClosed = isOrderingClosed();
+    setInterval(function () {
+      const now = isOrderingClosed();
+      if (now === _wasClosed) return;
+      _wasClosed = now;
+      if (!state.currentOrderId) renderCustomer();
+    }, 20000);
     initAddons();
 
     // 附加商品：訂閱 config/addons（店家在管理後台 admin.html 的「附加商品」分頁維護）

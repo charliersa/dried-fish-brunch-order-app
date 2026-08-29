@@ -1,6 +1,6 @@
 // 顧客手機點餐 App（獨立版）Service Worker
 const CACHE_PREFIX = 'xyg-customer-pwa-';
-const CACHE_NAME = CACHE_PREFIX + 'v16';
+const CACHE_NAME = CACHE_PREFIX + 'v17';
 const ASSETS = [
   './',
   './index.html',

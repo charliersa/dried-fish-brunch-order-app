@@ -665,7 +665,7 @@ const CONFIG = { db: null, mode: 'local', onChange: null, pollTimer: null, data:
 function isConfigLoaded() { return CONFIG.mode !== 'cloud' || CONFIG.loaded; }
 
 function defaultConfig() {
-  return { menu: CURRENT_MENU, ent: JSON.parse(JSON.stringify(DEFAULT_ENT)), announcements: [] };
+  return { menu: CURRENT_MENU, ent: JSON.parse(JSON.stringify(DEFAULT_ENT)), closeTime: '11:50', closeEnabled: false, announcements: [] };
 }
 
 function normalizeConfig(d) {
@@ -673,7 +673,29 @@ function normalizeConfig(d) {
   d.menu = (d.menu && d.menu.length) ? d.menu : CURRENT_MENU;
   d.ent = Object.assign({ staff: [], ingredients: [], equipment: [], costs: [] }, d.ent || {});
   d.announcements = Array.isArray(d.announcements) ? d.announcements : []; // 公告欄（後台手動新增）
+  d.closeTime = d.closeTime || '11:50'; // 結單時間（HH:MM）：啟用後此時間起顧客停止點餐
+  if (typeof d.closeEnabled !== 'boolean') d.closeEnabled = false; // 結單開關，預設關閉（暫停）
   return d;
+}
+
+// ===== 結單時間：啟用後，過了此時間（HH:MM）顧客點餐頁停止接單 =====
+function getCloseTime() {
+  return (CONFIG.data && CONFIG.data.closeTime) || '11:50';
+}
+
+function isCloseEnabled() {
+  return !!(CONFIG.data && CONFIG.data.closeEnabled);
+}
+
+// 現在是否已過結單時間（顧客停止點餐）；未啟用結單則永遠回 false；time 參數可傳指定時間，預設為現在
+function isOrderingClosed(time) {
+  if (!isCloseEnabled()) return false; // 結單開關關閉（暫停）→ 不限制
+  const t = getCloseTime();
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return false; // 沒設定或格式錯 → 不限制
+  const parts = t.split(':');
+  const limit = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  const d = time ? new Date(time) : new Date();
+  return (d.getHours() * 60 + d.getMinutes()) >= limit;
 }
 
 // ===== 公告欄：後台手動新增的公告，隨營運設定一起同步到顧客點餐頁 =====
